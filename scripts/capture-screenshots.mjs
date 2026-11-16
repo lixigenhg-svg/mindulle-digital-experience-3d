@@ -109,7 +109,7 @@ try {
   });
   await wait(300);
   await portrait.screenshot({
-    path: `${OUT}/08-monk-front.png`,
+    path: `${OUT}/08-avatar-front.png`,
     clip: { x: 570, y: 250, width: 300, height: 560 }
   });
   await portraitCtx.close();

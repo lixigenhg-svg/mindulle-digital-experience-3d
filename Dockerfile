@@ -1,4 +1,4 @@
-# temple Temple Replica — 多阶段构建，产物为纯静态站点
+# mindulle 3D 체험관 — 多阶段构建，产物为纯静态站点
 FROM node:20-alpine AS build
 WORKDIR /app
 

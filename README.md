@@ -16,12 +16,12 @@
 | 바깥 마당과 담장 | 돌길과 단풍 |
 | ![전각 전면](docs/screenshots/04-전각-전면.jpg) | ![전각 근경](docs/screenshots/05-전각-근경.jpg) |
 | 전각 정면 — 현판과 마당 | 전각 안쪽 |
-| ![석조물](docs/screenshots/06-마당-석조물.jpg) | |
-| 마당 석조물 | |
+| ![석조물](docs/screenshots/06-마당-석조물.jpg) | ![메시지 벽](docs/screenshots/10-메시지-벽.jpg) |
+| 마당 석조물 | 메시지 벽 — 7일 동안 이름이 걸리는 벽 |
 | ![평상](docs/screenshots/07-평상-단풍.jpg) | ![차실](docs/screenshots/08-차실.jpg) |
 | 평상 6석 — 앉아서 쉬어가기 | 차실 — 방석 4석 |
-| ![캐릭터](docs/screenshots/09-캐릭터-근경.jpg) | |
-| 캐릭터 근경 — 눈 감고 미소 짓는 얼굴 | |
+| ![캐릭터](docs/screenshots/09-캐릭터-근경.jpg) | ![라이트](docs/screenshots/11-라이트-등불.jpg) |
+| 캐릭터 근경 — 눈 감고 미소 짓는 얼굴 | 라이트 — 산문 등불과 마당 |
 
 ## 1. 구현된 기능
 

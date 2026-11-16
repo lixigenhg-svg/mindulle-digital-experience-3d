@@ -1,5 +1,5 @@
 /**
- * ws-server.mjs —— 3D 법당 多人房间服务器（生产版，单文件，仅依赖 ws）
+ * ws-server.mjs —— 3D 체험관 多人房间服务器（生产版，单文件，仅依赖 ws）
  *
  * 特性：
  *   · 房间 = roomId（region:room:instance），坐满 CAPACITY 人返回 room_full，
@@ -106,7 +106,7 @@ const server = http.createServer((req, res) => {
     return;
   }
   res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('temple ws server');
+  res.end('care ws server');
 });
 
 const startedAt = Date.now();
@@ -289,11 +289,11 @@ setInterval(() => {
 
 setInterval(() => {
   const mem = process.memoryUsage();
-  console.log(`[temple] rooms=${rooms.size} online=${stat.conns} peak=${stat.peak} rss=${Math.round(mem.rss / 1048576)}MB`);
+  console.log(`[care] rooms=${rooms.size} online=${stat.conns} peak=${stat.peak} rss=${Math.round(mem.rss / 1048576)}MB`);
 }, 60000);
 
 const shutdown = sig => {
-  console.log(`[temple] ${sig} received, closing…`);
+  console.log(`[care] ${sig} received, closing…`);
   for (const set of rooms.values()) for (const ws of set) { try { ws.close(1001, 'server restart'); } catch {} }
   wss.close(() => server.close(() => process.exit(0)));
   setTimeout(() => process.exit(0), 3000);
@@ -302,5 +302,5 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 server.listen(PORT, () => {
-  console.log(`[temple] ws server on :${PORT}/ws  capacity=${CAPACITY}  origin=${ALLOW_ORIGIN.join('|')}`);
+  console.log(`[care] ws server on :${PORT}/ws  capacity=${CAPACITY}  origin=${ALLOW_ORIGIN.join('|')}`);
 });

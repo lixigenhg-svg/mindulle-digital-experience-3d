@@ -16,12 +16,12 @@
 | 外部庭院与围墙 | 石径与红叶 |
 | ![殿正面](docs/screenshots/04-전각-전면.jpg) | ![殿内](docs/screenshots/05-전각-근경.jpg) |
 | 殿正面 — 匾额与庭院 | 殿内侧景 |
-| ![石构](docs/screenshots/06-마당-석조물.jpg) | |
-| 庭院石构物 | |
+| ![石构](docs/screenshots/06-마당-석조물.jpg) | ![留言墙](docs/screenshots/10-메시지-벽.jpg) |
+| 庭院石构物 | 留言墙 — 名字挂 7 天 |
 | ![长凳](docs/screenshots/07-평상-단풍.jpg) | ![茶室](docs/screenshots/08-차실.jpg) |
 | 长凳 6 席 — 可坐下歇息 | 茶室 — 坐垫 4 席 |
-| ![角色](docs/screenshots/09-캐릭터-근경.jpg) | |
-| 角色近景 — 闭眼微笑的同一张脸 | |
+| ![角色](docs/screenshots/09-캐릭터-근경.jpg) | ![灯](docs/screenshots/11-라이트-등불.jpg) |
+| 角色近景 — 闭眼微笑的同一张脸 | 灯 — 山门灯笼与庭院 |
 
 ## 1. 已实现功能
 
