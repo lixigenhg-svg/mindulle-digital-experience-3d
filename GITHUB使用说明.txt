@@ -1,0 +1,12 @@
+mindulle-digital-experience-3d · GitHub 版
+1. 完整源码（React 18 + Vite 5 + Three.js 0.160），不含构建产物与密钥。
+2. npm install && npm run dev ；npm run build
+3. 多人版 VITE_WS_URL=wss://mindulle.kr/ws ；纯静态 VITE_WS_URL=off
+4. 支付接口目录为 mindulle.kr/care/，前端路径已同步。
+5. 素材授权（商用前提，不得删署名）：音频 김용배/공유마당/CC BY 4.0；3D 模型 국립중앙박물관/공공누리 1유형。
+   署名 src/ui/SettingsModal.tsx；完整条款 public/terms.html 第8条。
+6. 本站为个人事业者经营的虚拟体验型数字内容，非宗教法人渠道，收费为数字内容使用费。
+7. 术语统一：라이트 / 디지털 꽃·물 / 손 모으기 / 예 갖추기 / 나무북 / 구슬 / 마당 / 전각。
+8. 内部命名：角色 src/avatar/*、场景 ExperienceScene.tsx、模型 avatar*.glb / statue*.glb、调试钩子 __MD_*。
+9. 塑像质感入口 src/scene/StatueFigure.tsx 的 mats()，背光在同文件 head() 末尾。
+10. Vercel 仅静态部分可部署；支付与多人 WebSocket 留在自有服务器。
