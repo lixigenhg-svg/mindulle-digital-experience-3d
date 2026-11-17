@@ -89,8 +89,13 @@ export class AudioEngine {
 
   /** 已解码的采样（缺失项表示该采样走了兜底） */
   private buffers: Partial<Record<SampleName, AudioBuffer>> = {};
+  /** 单采样按需加载的进行中 promise（幂等） */
+  private samplePromises: Partial<Record<SampleName, Promise<void>>> = {};
   private loaded = false;
   private preloadPromise: Promise<void> | null = null;
+  /** 背景音是否已在下载 / 已确认失败（避免失败后反复重试形成死循环） */
+  private chantLoading = false;
+  private chantLoadFailed = false;
   private ext: 'm4a' | 'ogg' = 'm4a';
 
   private ambientSource: AudioBufferSourceNode | null = null;
@@ -170,52 +175,56 @@ export class AudioEngine {
     return urls;
   }
 
-  /** 只 decode 不播；幂等，重复调用返回同一个 promise */
+  /** 按需加载单个采样；幂等，失败也 resolve（由合成音兜底） */
+  loadSample(name: SampleName): Promise<void> {
+    const done = this.samplePromises[name];
+    if (done) return done;
+    this.ensureContext();
+    const ctx = this.ctx;
+    if (!ctx) return Promise.resolve();
+    this.ext = this.pickExt();
+
+    const p = (async () => {
+      for (const file of SAMPLE_FILES[name]) {
+        for (const url of this.candidateUrls(file)) {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const buf = await res.arrayBuffer();
+            const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
+              const ret = ctx.decodeAudioData(buf, resolve, reject);
+              if (ret && typeof (ret as Promise<AudioBuffer>).then === 'function') {
+                (ret as Promise<AudioBuffer>).then(resolve, reject);
+              }
+            });
+            this.buffers[name] = decoded;
+            return;
+          } catch {
+            // 换下一个候选
+          }
+        }
+      }
+      console.warn(`[mindulle] sample load failed, using fallback: ${name}`);
+    })();
+
+    this.samplePromises[name] = p;
+    return p;
+  }
+
+  /** 首屏只加载环境音与短音效；背景音（1.6MB）等用户点「배경음 켜기」再下 */
   preload(): Promise<void> {
     if (this.preloadPromise) return this.preloadPromise;
     this.ensureContext();
-    const ctx = this.ctx;
-
-    this.preloadPromise = (async () => {
-      if (!ctx) {
-        this.loaded = true;
-        return;
-      }
-      this.ext = this.pickExt();
-      const names = Object.keys(SAMPLE_FILES) as SampleName[];
-      const failed: SampleName[] = [];
-
-      await Promise.all(
-        names.map(async name => {
-          for (const file of SAMPLE_FILES[name]) {
-            for (const url of this.candidateUrls(file)) {
-              try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const buf = await res.arrayBuffer();
-                const decoded = await new Promise<AudioBuffer>((resolve, reject) => {
-                  const ret = ctx.decodeAudioData(buf, resolve, reject);
-                  if (ret && typeof (ret as Promise<AudioBuffer>).then === 'function') {
-                    (ret as Promise<AudioBuffer>).then(resolve, reject);
-                  }
-                });
-                this.buffers[name] = decoded;
-                return;
-              } catch {
-                // 换下一个候选
-              }
-            }
-          }
-          failed.push(name);
-        })
-      );
-
+    if (!this.ctx) {
       this.loaded = true;
-      if (failed.length) {
-        console.warn(`[mindulle] sample load failed, using fallback: ${failed.join(', ')}`);
-      }
-    })();
+      this.preloadPromise = Promise.resolve();
+      return this.preloadPromise;
+    }
 
+    const names: SampleName[] = ['forest', 'leaves', 'wood_hit', 'bead', 'cloth'];
+    this.preloadPromise = Promise.all(names.map(name => this.loadSample(name))).then(() => {
+      this.loaded = true;
+    });
     return this.preloadPromise;
   }
 
@@ -359,11 +368,18 @@ export class AudioEngine {
 
     const buffer = this.buffers.chant;
     if (!buffer) {
-      if (!this.loaded) {
-        void this.preload().then(() => {
-          if (this.chantWanted && !this.muted && this.unlocked) this.startChant();
-        });
-      }
+      if (this.chantLoadFailed || this.chantLoading) return;
+      // 背景音不随首屏下载：第一次点「배경음 켜기」才拉取并解码
+      this.chantLoading = true;
+      void this.loadSample('chant').then(() => {
+        this.chantLoading = false;
+        if (!this.buffers.chant) {
+          this.chantLoadFailed = true;
+          console.warn('[mindulle] ambient loop missing, chant stays off');
+          return;
+        }
+        if (this.chantWanted && !this.muted && this.unlocked) this.startChant();
+      });
       return;
     }
 

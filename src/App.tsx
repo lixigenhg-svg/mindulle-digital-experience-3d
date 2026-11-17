@@ -66,6 +66,36 @@ function StatsBridge({
   return null;
 }
 
+/**
+ * 首屏加载提示 —— 只加一层提示，不参与任何 3D 绘制。
+ * 模型下载期间显示百分比，场景就绪（__MD_TP__ 可用）后自动消失。
+ */
+function SceneLoading() {
+  // 进度条用 CSS 动画（合成线程推进），主线程在编译着色器时也不会卡住不动。
+  // 只往前、不回跳；到 90% 停住，等场景真正就绪后整块消失。
+  return (
+    <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+      <div
+        className="flex flex-col items-center gap-3 rounded-2xl px-6 py-5"
+        style={{ background: 'rgba(20,22,17,0.72)', backdropFilter: 'blur(2px)' }}
+      >
+        <span className="text-[13px] tracking-[0.02em]" style={{ color: 'rgba(255,255,255,0.86)' }}>
+          장면을 준비하는 중
+        </span>
+        <div className="h-[3px] w-[148px] overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.16)' }}>
+          <div
+            className="md-load-bar h-full w-full rounded-full"
+            style={{ background: '#e8c887' }}
+          />
+        </div>
+        <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.5)' }}>
+          잠시만 기다려 주세요
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // 本地玩家的法号固定为「민들레 안심」（蒲公英安心）
   const identity = useMemo(() => ({ ...makeIdentity(), name: '민들레 안심' }), []);
@@ -100,6 +130,8 @@ export default function App() {
   const [seatNear, setSeatNear] = useState<'tea' | 'bench' | null>(null);
   const [malaOpen, setMalaOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  // 场景是否真正可玩（模型与贴图就绪后调试钩子才出现），用于收起加载提示
+  const [sceneReady, setSceneReady] = useState(false);
 
   const framesRef = useRef(0);
   const statsRef = useRef({ fps: 0, triangles: 0, drawCalls: 0 });
@@ -174,6 +206,24 @@ export default function App() {
       removeEventListener('keydown', unlock);
     };
   }, []);
+
+  /* ---------- 场景就绪探测（只读，不参与场景逻辑） ---------- */
+  useEffect(() => {
+    if (sceneReady) return;
+    const probe = () => {
+      const hook = (window as { __MD_TP__?: unknown }).__MD_TP__;
+      if (typeof hook === 'function') {
+        setSceneReady(true);
+        return true;
+      }
+      return false;
+    };
+    if (probe()) return;
+    const timer = window.setInterval(() => {
+      if (probe()) window.clearInterval(timer);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [sceneReady]);
 
   /* ---------- 移动上报（80ms 节流） ---------- */
   useEffect(() => {
@@ -506,6 +556,8 @@ export default function App() {
         <SceneProbe onFrame={() => { framesRef.current += 1; }} />
         <StatsBridge framesRef={framesRef} statsRef={statsRef} glRef={glRef} />
       </Canvas>
+
+      {entered && !sceneReady && <SceneLoading />}
 
       {!entered && (
         <Intro onEnter={enterExperience} onToggleSound={onToggleSound} muted={muted} />

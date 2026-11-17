@@ -487,8 +487,17 @@ function StonePath() {
     [tex],
   );
   const slabs = Array.from({ length: 20 }, (_, i) => 33.4 + i * 0.9);
+  // 垫底色：石板之间 2cm 的缝原本露出更亮的庭院地面，走动时会形成细亮线（像水面波动）。
+  // 这里在石板下方 6mm 铺一条深色垫底，缝隙看起来就是暗色石缝，不再闪烁。
+  const backingMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: 0x4e4941, roughness: 1 }),
+    [],
+  );
   return (
     <group>
+      <mesh position={[0, 0.006, 41.95]} rotation-x={-Math.PI / 2} receiveShadow material={backingMat}>
+        <planeGeometry args={[4.6, 18.0]} />
+      </mesh>
       {slabs.map(z => (
         <mesh key={z} position={[0, 0.012, z]} rotation-x={-Math.PI / 2} receiveShadow material={mat}>
           <planeGeometry args={[4.6, 0.88]} />

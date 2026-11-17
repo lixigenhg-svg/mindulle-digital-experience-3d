@@ -529,3 +529,19 @@ canvas {
   .intro-actions { margin-top: 26px; }
   .intro-foot { padding: 14px 28px 22px; }
 }
+
+/* 首屏加载条：用 transform 动画（合成线程执行），主线程忙时也照样往前走 */
+@keyframes md-load-grow {
+  0%   { transform: scaleX(0.10); }
+  45%  { transform: scaleX(0.42); }
+  75%  { transform: scaleX(0.68); }
+  100% { transform: scaleX(0.90); }
+}
+.md-load-bar {
+  transform-origin: left center;
+  animation: md-load-grow 16s cubic-bezier(0.22, 0.6, 0.36, 1) forwards;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .md-load-bar { animation-duration: 40s; }
+}
