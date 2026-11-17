@@ -1,6 +1,8 @@
 민들레 3D 체험관 — GitHub 使用说明
 ====================================
 
+체험 링크: https://3d.mindulle.kr 
+
 1. 这是什么
    浏览器里可走动的 3D 数字体验馆。React 18 + Vite 5 + Three.js 0.160 +
    react-three-fiber。纯前端，构建产物是静态文件，可放在任意静态托管上。
@@ -29,7 +31,6 @@
      MAX_HALLS=100        最多自动开到第几殿，默认 100
      ALLOW_ORIGIN=https://mindulle.kr,https://3d.mindulle.kr
    满员会自动开下一殿、人走空自动关殿，前端不需要额外配置。
-   运行状态页：https://3d.mindulle.kr/monitor.html （随 dist 一起发布）。
    位置数据每 200ms 合并一包发送，一殿 100 人走动时下行约 1.5MB/s，旧写法约 10MB/s。
 
 6. 目录说明
@@ -58,3 +59,5 @@
     - 页面全白：多半是模型文件路径不对，看浏览器控制台的 404。
     - 进不去房间：VITE_WS_URL 没配或服务端没启动。
     - 构建后图片 404：确认 base 配置，静态托管子目录时用 --base ./。
+
+체험 링크: https://3d.mindulle.kr 
