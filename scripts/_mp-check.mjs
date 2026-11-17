@@ -1,0 +1,16 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p1 = await b.newPage({ viewport: { width: 700, height: 900 } });
+const p2 = await b.newPage({ viewport: { width: 700, height: 900 } });
+await p1.goto('http://localhost:5288/', { waitUntil: 'load' });
+await p1.waitForTimeout(15000);
+await p1.evaluate(()=>window.__MD__?.enter?.());
+await p2.goto('http://localhost:5288/', { waitUntil: 'load' });
+await p2.waitForTimeout(15000);
+await p2.evaluate(()=>window.__MD__?.enter?.());
+await p2.waitForTimeout(4000);
+const peers = await p1.evaluate(()=>[...(window.__PEERS__?[]:[])]); 
+console.log('p2 snapshot peers:', JSON.stringify(await p2.evaluate(()=>Object.keys(window.__MD__.getSnapshot().peers||{}))).slice(0,200));
+await p2.screenshot({ path: '/tmp/mp2.png' });
+await p1.screenshot({ path: '/tmp/mp1.png' });
+await b.close();

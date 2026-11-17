@@ -2,7 +2,7 @@
  * net.ts —— WebSocket 客户端：连接、join、move/action 上报、重连、满员换房、心跳
  * 服务端只做房间管理与广播，不校验位置。协议与旧工程一致。
  */
-import { WS_URL, OFFLINE, RECONNECT, type RoomInfo } from './config';
+import { WS_URL, OFFLINE, RECONNECT, ROOM_CAPACITY, type RoomInfo } from './config';
 import type { Identity } from './names';
 import type { ActionEvent } from './actions';
 
@@ -21,6 +21,8 @@ export interface NetHandlers {
   onPeerJoin(peer: PeerSnapshot): void;
   onPeerLeave(id: string): void;
   onPeerMove(id: string, x: number, z: number, rot: number, anim: string): void;
+  /** 服务端 5Hz 合并快照：一次给全部人，实现方可一次提交，避免逐条重渲染 */
+  onPeersBatch?(items: Array<[string, number, number, number, string]>): void;
   onPeerAction(id: string, action: string): void;
   onStatus(text: string | null): void;
   onRoomFull(): void;
@@ -158,7 +160,7 @@ export class Net {
         this.handlers.onJoined(
           msg.selfId,
           msg.roomId,
-          typeof msg.capacity === 'number' ? msg.capacity : 20,
+          typeof msg.capacity === 'number' ? msg.capacity : ROOM_CAPACITY,
           msg.count,
           msg.peers || []
         );
@@ -166,6 +168,30 @@ export class Net {
       case 'room_full':
         this.handleRoomFull();
         break;
+      case 'hall_limit':
+        // 服务端殿号上限：把 instance 置 -1，随后 onRoomFull 里的 +1 正好回到 0 号殿
+        this.room.instance = -1;
+        this.handleRoomFull();
+        break;
+      case 'peers': {
+        // 服务端 5Hz 合并快照：一条消息里带同殿所有人的最新位置
+        const d = msg.d;
+        if (Array.isArray(d)) {
+          const items: Array<[string, number, number, number, string]> = [];
+          for (const it of d) {
+            if (!Array.isArray(it) || it.length < 5) continue;
+            if (it[0] === this.clientId) continue;
+            items.push([it[0], it[1], it[2], it[3], it[4]]);
+          }
+          if (items.length === 0) break;
+          if (this.handlers.onPeersBatch) {
+            this.handlers.onPeersBatch(items);
+          } else {
+            for (const it of items) this.handlers.onPeerMove(it[0], it[1], it[2], it[3], it[4]);
+          }
+        }
+        break;
+      }
       case 'peer_join':
         this.handlers.onPeerJoin({
           id: msg.id, name: msg.name, color: msg.color,

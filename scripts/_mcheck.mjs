@@ -1,0 +1,13 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({ executablePath:'/usr/local/bin/chromium', args:['--no-sandbox'] });
+const p = await (await b.newContext({ viewport:{width:1400,height:900} })).newPage();
+const bad=[]; p.on('response',r=>{ if(r.status()>=400) bad.push(r.status()+' '+r.url().slice(-40)); });
+const errs=[]; p.on('pageerror',e=>errs.push(e.message.slice(0,90)));
+await p.goto('file:///home/user/Doubao/chats/38453565767905538/monitor.html',{waitUntil:'load'});
+await p.waitForTimeout(3500);
+console.log('在线:', await p.evaluate(()=>document.getElementById('online').textContent));
+console.log('状态:', await p.evaluate(()=>document.getElementById('stateText').textContent));
+console.log('灯:', await p.evaluate(()=>document.getElementById('lampCount').textContent));
+console.log('ERR:', errs.slice(0,2), 'BAD:', bad.slice(0,2));
+await p.screenshot({path:'/tmp/monitor.jpg',type:'jpeg',quality:85});
+await b.close();

@@ -1,0 +1,23 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const ctx = await b.newContext({viewport:{width:1600,height:900},deviceScaleFactor:2});
+const p = await ctx.newPage();
+await p.goto('http://127.0.0.1:5199/');
+await p.waitForTimeout(4000);
+await p.getByTestId('enter-button').click();
+await p.waitForTimeout(3400);
+await p.mouse.click(800, 330); await p.waitForTimeout(1400);
+await p.mouse.click(800, 300); await p.waitForTimeout(2000);
+await p.mouse.move(800,450);
+await p.mouse.wheel(0,-700); await p.waitForTimeout(700);
+await p.mouse.wheel(0,-700); await p.waitForTimeout(1200);
+await p.addStyleTag({content:'div[class*="inset-x-0 bottom-0"]{display:none!important} div[class*="inset-x-0 top-0"]{opacity:.55}'});
+await p.waitForTimeout(400);
+
+const shot = async (n, ms) => { await p.waitForTimeout(ms); await p.screenshot({path:`/tmp/demo/${n}.png`}); };
+await p.evaluate(()=>window.__MD__.play('PRAY'));       await shot('04-pray', 1700);
+await p.evaluate(()=>window.__MD__.play('BOW'));        await shot('05-bow', 1900);
+await p.evaluate(()=>window.__MD__.play('WOODFISH'));   await shot('06-woodfish', 1500);
+await p.evaluate(()=>window.__MD__.play('BEADS'));      await shot('07-beads', 1500);
+await b.close();
+console.log('ok');

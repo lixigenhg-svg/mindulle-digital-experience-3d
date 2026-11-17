@@ -1,0 +1,10 @@
+import { chromium, devices } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true })).newPage();
+p.on('console', m => { if (m.type()==='error') console.log('ERR:', m.text().slice(0,200)); });
+p.on('requestfailed', r => console.log('REQFAIL:', r.url().slice(-60)));
+p.on('pageerror', e => console.log('PAGEERR:', String(e).slice(0,200)));
+await p.goto('file:///home/user/Doubao/chats/38453565767905538/temple-app-3d.html',{waitUntil:'load'});
+await p.waitForTimeout(12000);
+await p.screenshot({path:'/tmp/pr1.png'});
+await b.close();

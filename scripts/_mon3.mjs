@@ -1,0 +1,10 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({ executablePath:'/usr/local/bin/chromium', args:['--no-sandbox'] });
+const ctx = await b.newContext({ viewport:{width:1100,height:700} });
+const p = await ctx.newPage();
+p.on('pageerror', e => console.log('ERR:', e.message.slice(0,120)));
+await p.goto('file:///tmp/mon.html');
+await p.waitForTimeout(6000);
+await p.screenshot({ path:'/tmp/mon_fail.png' });
+console.log('状态:', await p.evaluate(() => document.getElementById('conn').textContent));
+await b.close();

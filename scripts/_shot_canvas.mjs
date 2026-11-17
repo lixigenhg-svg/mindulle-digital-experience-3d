@@ -1,0 +1,17 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({ viewport:{width:1600,height:900} })).newPage();
+await p.goto('http://localhost:5296/3d/',{waitUntil:'load', timeout:90000});
+await p.waitForTimeout(5000);
+await p.waitForFunction(()=>window.__MD__,null,{timeout:90000});
+await p.evaluate(()=>window.__MD__.enter());
+await p.waitForTimeout(8000);
+await p.evaluate(()=>{window.__MD_TP__(0, 3.0);});
+await p.waitForTimeout(600);
+await p.evaluate(()=>window.__MD_FIXCAM__([0,1.35,5.6],[0.6,0.8,-1.8]));
+await p.waitForTimeout(1500);
+await p.locator('canvas').first().screenshot({path:'/tmp/hall_clean.png', timeout:90000});
+await p.evaluate(()=>window.__MD_FIXCAM__([-1.6,1.1,4.2],[4.0,0.5,-0.6]));
+await p.waitForTimeout(1500);
+await p.locator('canvas').first().screenshot({path:'/tmp/hall_box.png', timeout:90000});
+await b.close();

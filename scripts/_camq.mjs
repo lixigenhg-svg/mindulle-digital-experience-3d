@@ -1,0 +1,16 @@
+import { chromium, devices } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true })).newPage();
+await p.goto('http://localhost:5288/',{waitUntil:'load'});
+await p.waitForTimeout(6000);
+await p.waitForFunction(()=>window.__MD__,null,{timeout:30000});
+await p.evaluate(()=>window.__MD__.enter());
+await p.evaluate(()=>window.__MD_TP__(0,-5.0));
+await p.waitForTimeout(800);
+const st = await p.evaluate(()=>({pos:window.__MD_POS__(),cam:window.__MD_CAMPOS__()}));
+console.log('before',JSON.stringify(st));
+await p.evaluate(()=>window.__MD_FIXCAM__([5.4,1.85,-4.6],[0.2,1.55,-5.9]));
+await p.waitForTimeout(2000);
+console.log('after',JSON.stringify(await p.evaluate(()=>window.__MD_CAMPOS__())));
+await p.screenshot({path:'/tmp/camq.png'});
+await b.close();

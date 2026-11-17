@@ -1,0 +1,13 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const ctx = await b.newContext({ viewport:{width:1280,height:800} });
+const p = await ctx.newPage();
+const rows=[];
+p.on('response', async r => { const u=r.url().replace('http://localhost:5291/',''); let n=0; try{ n=(await r.body()).length }catch{} rows.push([u,n]); });
+await p.goto('http://localhost:5291/',{waitUntil:'load',timeout:90000});
+await p.waitForTimeout(3000);
+const sorted = rows.sort((a,b)=>b[1]-a[1]);
+let tot=0; sorted.forEach(r=>tot+=r[1]);
+console.log('总下载', (tot/1048576).toFixed(2)+'MB');
+sorted.slice(0,18).forEach(r=>console.log((r[1]/1024).toFixed(0).padStart(7)+'KB  '+r[0]));
+await b.close();

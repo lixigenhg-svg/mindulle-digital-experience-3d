@@ -144,6 +144,7 @@ export default function App() {
       onPeerJoin: p => store.addPeer(p),
       onPeerLeave: id => store.removePeer(id),
       onPeerMove: (id, x, z, rot, anim) => store.movePeer(id, x, z, rot, anim),
+      onPeersBatch: items => store.movePeersBatch(items),
       onPeerAction: (id, action) => store.peerAction(id, action),
       onStatus: t => store.setStatus(t),
       onRoomFull: () => {

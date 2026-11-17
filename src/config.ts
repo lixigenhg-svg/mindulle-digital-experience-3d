@@ -3,8 +3,11 @@
  * 与旧工程协议保持一致，便于复用现有 ws 服务端。
  */
 
-/** 房间人数上限 */
-export const ROOM_CAPACITY = 20;
+/** 单殿人数上限（与服务端 CAPACITY 保持一致：一殿 100 人） */
+export const ROOM_CAPACITY = 100;
+
+/** 最多自动开到第几殿（满员就 +1，服务端 MAX_HALLS 同样限制） */
+export const MAX_HALLS = 100;
 
 /** 本地移动上报节流间隔（毫秒） */
 export const MOVE_SEND_INTERVAL = 80;
@@ -82,9 +85,10 @@ export function applyRoom(region: string, room: string): RoomInfo {
   return { room, instance: 0, region, roomId: buildRoomId(region, room, 0) };
 }
 
-/** 满员后 instance +1 并刷新 roomId */
+/** 满员后 instance +1 并刷新 roomId（超过 MAX_HALLS 时回落 0 号殿） */
 export function bumpInstance(room: RoomInfo): void {
   room.instance += 1;
+  if (room.instance > MAX_HALLS) room.instance = 0;
   room.roomId = buildRoomId(room.region, room.room, room.instance);
 }
 

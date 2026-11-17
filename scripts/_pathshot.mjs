@@ -1,0 +1,12 @@
+import { chromium, devices } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true })).newPage();
+await p.goto('http://localhost:5288/',{waitUntil:'load'});
+await p.waitForTimeout(6000);
+await p.waitForFunction(()=>window.__MD__,null,{timeout:30000});
+await p.evaluate(()=>window.__MD__.enter());
+await p.evaluate(()=>{window.__MD_TP__(0,30); window.__MD_FACE__(Math.PI);});
+await p.waitForTimeout(600);
+await p.evaluate(()=>window.__MD_FIXCAM__([0.15,1.35,26.6],[0,0.45,34.5]));
+await p.waitForTimeout(1200); await p.screenshot({path:'/tmp/pt1.png'});
+await b.close();

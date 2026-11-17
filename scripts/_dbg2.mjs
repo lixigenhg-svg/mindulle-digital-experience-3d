@@ -1,0 +1,13 @@
+import { chromium, devices } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true })).newPage();
+p.on('console', m=>{ const t=m.text(); if(t.includes('ARRIVE')) console.log(t); });
+await p.goto('http://localhost:5288/',{waitUntil:'load'});
+await p.waitForTimeout(7000);
+await p.evaluate(()=>window.__MD__.enter());
+await p.waitForTimeout(14000);
+await p.evaluate(()=>{window.__MD_TP__(0,14); window.__MD_FACE__(0);});
+await p.waitForTimeout(600);
+await p.click('[data-testid="action-incense"]');
+await p.waitForTimeout(9000);
+await b.close();

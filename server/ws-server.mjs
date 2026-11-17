@@ -11,19 +11,22 @@
  * 运行：node ws-server.mjs
  * 环境变量：
  *   PORT=8090
- *   CAPACITY=20
+ *   CAPACITY=100        单殿人数上限（2~200）
+ *   MAX_HALLS=100       最多开到第几殿（0~MAX_HALLS，总在线上限 = CAPACITY * (MAX_HALLS+1)）
  *   ALLOW_ORIGIN=https://mindulle.kr,https://3d.mindulle.kr
  */
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.PORT || 8090);
-const CAPACITY = Math.max(2, Math.min(60, Number(process.env.CAPACITY || 20)));
+const CAPACITY = Math.max(2, Math.min(200, Number(process.env.CAPACITY || 100)));
+const MAX_HALLS = Math.max(1, Math.min(500, Number(process.env.MAX_HALLS || 100)));
 const ALLOW_ORIGIN = (process.env.ALLOW_ORIGIN
   || 'https://mindulle.kr,https://www.mindulle.kr,https://3d.mindulle.kr')
   .split(',').map(s => s.trim()).filter(Boolean);
 
 const MOVE_PER_SEC = 12;          // 每连接每秒最多 12 次位置上报
+const TICK_MS = 200;              // 位置快照合并间隔（5Hz）：同殿所有人合成一包，人数越多越省
 const JOIN_TIMEOUT_MS = 20000;    // 连上 20 秒不发 join 就断开
 const HEARTBEAT_CHECK_MS = 25000;
 const HEARTBEAT_TIMEOUT_MS = 70000; // 客户端 20s 一次 ping，容忍三次丢包
@@ -86,9 +89,30 @@ function broadcast(roomId, sender, msg) {
 /* ---------------- HTTP：健康检查 ---------------- */
 
 const server = http.createServer((req, res) => {
+  // 跨域放行：3d.mindulle.kr 上的 monitor.html 要能读这个接口
+  const origin = String(req.headers.origin || '');
+  const acao = ALLOW_ORIGIN.includes(origin) ? origin : (ALLOW_ORIGIN[0] || '*');
+  const cors = {
+    'Access-Control-Allow-Origin': acao,
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'cache-control',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  };
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, cors);
+    res.end();
+    return;
+  }
+
   if (req.url === '/health' || req.url === '/healthz') {
     const mem = process.memoryUsage();
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...cors,
+    });
     res.end(JSON.stringify({
       ok: true,
       uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
@@ -99,13 +123,16 @@ const server = http.createServer((req, res) => {
       rejected: stat.rejected,
       dropped: stat.dropped,
       capacity: CAPACITY,
+      maxHalls: MAX_HALLS,
+      totalSeats: CAPACITY * (MAX_HALLS + 1),
+      tickMs: TICK_MS,
       rssMB: Math.round(mem.rss / 1048576),
       heapMB: Math.round(mem.heapUsed / 1048576),
       roomDetail: [...rooms.entries()].map(([id, set]) => ({ roomId: id, count: set.size })),
     }, null, 2));
     return;
   }
-  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', ...cors });
   res.end('care ws server');
 });
 
@@ -189,6 +216,16 @@ function handleJoin(ws, msg) {
   const clientId = String(msg.clientId || '').slice(0, 40).replace(/[^A-Za-z0-9\-_:.]/g, '');
   if (!roomId || !clientId) { stat.dropped++; ws.close(1008, 'bad join'); return; }
 
+  // 殿号上限：超过 MAX_HALLS 的殿不收，客户端收到 hall_limit 后回到 0 号殿
+  const seg  = roomId.split(':');
+  const inst = Number(seg[seg.length - 1]);
+  if (!Number.isFinite(inst) || inst < 0 || inst > MAX_HALLS) {
+    try { ws.send(JSON.stringify({ type: 'hall_limit', max: MAX_HALLS })); } catch {}
+    stat.dropped++;
+    ws.close(1000, 'hall limit');
+    return;
+  }
+
   let set = rooms.get(roomId);
   if (!set) { set = new Set(); rooms.set(roomId, set); }
 
@@ -213,6 +250,7 @@ function handleJoin(ws, msg) {
   ws.name = cleanName(msg.name);
   ws.color = cleanColor(msg.color);
   ws.pos = { x: 0, z: 0, rot: 0, anim: 'idle' };
+  ws.dirty = false;
   set.add(ws);
   stat.joins++;
 
@@ -222,6 +260,7 @@ function handleJoin(ws, msg) {
       selfId: clientId,
       roomId,
       capacity: CAPACITY,
+      maxHalls: MAX_HALLS,
       count: set.size,
       peers: peersOf(set, ws),
     }));
@@ -241,12 +280,30 @@ function handleMove(ws, msg) {
     rot: clampNum(msg.rot, 10),
     anim: typeof msg.anim === 'string' ? msg.anim.slice(0, 16) : 'idle',
   };
-  broadcast(ws.roomId, ws, {
-    type: 'peer_move',
-    id: ws.clientId,
-    x: ws.pos.x, z: ws.pos.z, rot: ws.pos.rot, anim: ws.pos.anim,
-  });
+  // 不逐条转发：标记脏位，交给下面的快照循环每 200ms 合成一包
+  ws.dirty = true;
 }
+
+/* ---------- 位置快照：同殿所有人合并成一条消息，5Hz 发出 ----------
+   100 人同殿时，旧写法是每人每次移动发 99 条（约 10 万条/秒），
+   这里变成每 200ms 每殿发 1 条（约 500 条/秒），带宽和 CPU 都降一个量级。 */
+const q2 = n => Math.round(n * 100) / 100;
+
+setInterval(() => {
+  for (const [roomId, set] of rooms) {
+    const d = [];
+    for (const ws of set) {
+      if (!ws.dirty || !ws.pos || ws.readyState !== 1) continue;
+      ws.dirty = false;
+      d.push([ws.clientId, q2(ws.pos.x), q2(ws.pos.z), q2(ws.pos.rot), ws.pos.anim]);
+    }
+    if (d.length === 0) continue;
+    const data = JSON.stringify({ type: 'peers', d });
+    for (const ws of set) {
+      if (ws.readyState === 1) { try { ws.send(data); } catch {} }
+    }
+  }
+}, TICK_MS);
 
 const ACTIONS = new Set([
   'bow_start', 'bow_stop', 'pray', 'beads_start', 'beads_stop', 'woodfish',
@@ -302,5 +359,5 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 server.listen(PORT, () => {
-  console.log(`[care] ws server on :${PORT}/ws  capacity=${CAPACITY}  origin=${ALLOW_ORIGIN.join('|')}`);
+  console.log(`[care] ws server on :${PORT}/ws  capacity=${CAPACITY} maxHalls=${MAX_HALLS} tick=${TICK_MS}ms  origin=${ALLOW_ORIGIN.join('|')}`);
 });

@@ -1,0 +1,16 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({viewport:{width:1400,height:800}})).newPage();
+await p.goto('http://localhost:5296/3d/',{waitUntil:'load',timeout:90000});
+await p.waitForTimeout(4000);
+await p.waitForFunction(()=>window.__MD__,null,{timeout:90000});
+await p.evaluate(()=>window.__MD__.enter());
+await p.waitForTimeout(9000);
+await p.evaluate(()=>window.__MD_TP__(1.767, 4.435));
+await p.waitForTimeout(700);
+await p.evaluate(()=>{ window.__MD__.force && window.__MD__.force('sitting'); });
+await p.waitForTimeout(3000);
+await p.evaluate(()=>window.__MD_FIXCAM__([1.767,1.15,7.6],[1.767,0.42,4.435]));
+await p.waitForTimeout(1600);
+await p.screenshot({path:'/tmp/smoke_sit3.png',timeout:90000});
+await b.close();

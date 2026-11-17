@@ -1,0 +1,20 @@
+import { chromium, devices } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const ctx = await b.newContext({ ...devices['iPhone 13'], isMobile: true, hasTouch: true });
+const p = await ctx.newPage();
+await p.goto('http://localhost:5288/', { waitUntil: 'load' });
+await p.waitForTimeout(16000);
+await p.evaluate(()=>window.__MD__?.enter?.());
+await p.waitForTimeout(3000);
+await p.screenshot({ path: '/tmp/j0.png' });
+// 摇杆向前推
+const box = await p.locator('.joystick').boundingBox();
+const cx = box.x + box.width/2, cy = box.y + box.height/2;
+await p.touchscreen.tap(cx, cy-40).catch(()=>{});
+await p.mouse.move(cx, cy); await p.mouse.down(); await p.mouse.move(cx, cy-42, { steps: 4 });
+await p.waitForTimeout(7000);
+const s1 = await p.evaluate(()=>window.__MD__.getSnapshot().player);
+await p.mouse.up();
+await p.screenshot({ path: '/tmp/j1.png' });
+console.log('after stick', JSON.stringify(s1));
+await b.close();
