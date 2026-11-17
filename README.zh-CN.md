@@ -1,6 +1,6 @@
 # 민들레 3D 体验馆 · Mindulle Digital Experience
 
-체험 링크: [https://mindulle.kr/3d/](https://mindulle.kr/3d/)
+체험 링크: https://3d.mindulle.kr 
 
 以传统建筑为题材的 3D 数字体验空间。打开浏览器即可进入，用 Three.js 实时渲染。场景中的角色基于项目自带的 glTF 模型，由 17 根骨骼驱动，做出合手、行礼、数珠、敲木鼓等动作。声音分环境音、背景音、效果音三路独立调音量。
 
@@ -122,3 +122,5 @@ VITE_WS_URL=ws://localhost:8080 npm run dev     # 前端连接
 - 显示名 7 天后自动下架，列表接口只返回首字其余打码。
 - 多人模式在没有服务端时自动退化为单人模式。
 - 移动端会降低阴影质量以保持帧率。
+
+- 체험 링크: https://3d.mindulle.kr 
