@@ -1,5 +1,7 @@
 # 민들레 3D 体验馆 · Mindulle Digital Experience
 
+체험 링크: [https://mindulle.kr/3d/](https://mindulle.kr/3d/)
+
 以传统建筑为题材的 3D 数字体验空间。打开浏览器即可进入，用 Three.js 实时渲染。场景中的角色基于项目自带的 glTF 模型，由 17 根骨骼驱动，做出合手、行礼、数珠、敲木鼓等动作。声音分环境音、背景音、效果音三路独立调音量。
 
 本仓库不是截图或设计稿，而是可以立即运行、修改、部署的 React + Vite 项目。`npm install` 后即可运行，`npm run build` 生成静态托管用的 `dist/`。
