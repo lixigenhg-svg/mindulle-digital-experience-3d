@@ -1,0 +1,53 @@
+민들레 3D 체험관 — GitHub 使用说明
+====================================
+
+1. 这是什么
+   浏览器里可走动的 3D 数字体验馆。React 18 + Vite 5 + Three.js 0.160 +
+   react-three-fiber。纯前端，构建产物是静态文件，可放在任意静态托管上。
+
+2. 环境要求
+   Node.js 20 以上。Windows / macOS / Linux 均可。
+
+3. 本地跑起来
+   npm install
+   npm run dev
+   浏览器打开终端提示的地址（一般 http://localhost:5173）。
+
+4. 构建静态站
+   npm run build
+   产物在 dist/，把这个目录整个上传到网站根目录即可。
+
+5. 多人房间（可选）
+   默认单机：.env.example 里 VITE_WS_URL=off。
+   要开多人：复制 .env.example 为 .env，把 VITE_WS_URL 改成
+   wss://你的域名/ws，然后重新 npm run build。
+   服务端脚本在 server/ws-server.mjs，用 Node 直接启动：
+   node server/ws-server.mjs
+   默认容量 20 人，端口与跨域名单在该文件顶部常量里。
+
+6. 目录说明
+   src/            前端源码
+   public/         静态素材（模型、音频、贴图、条款页）
+   docs/screenshots/  说明文档用的截图
+   server/         多人房间服务端
+   scripts/        构建与截图辅助脚本
+   tests/          单元测试
+
+7. 不要提交的东西
+   .env（含真实域名与密钥）、node_modules、dist、dist-multi、
+   任何 *.pem / *.key / *.log。.gitignore 已覆盖这些。
+
+8. 素材授权（重要）
+   模型与部分音频来自可商用授权素材，具体来源与许可写在
+   public/terms.html 第 8 条，以及 public/assets/models/README.txt。
+   这两处署名是授权条件，不能删除。商用前请自行再确认一次许可范围。
+
+9. 改文案的地方
+   界面文字集中在 src/ 下的组件里；条款与隐私政策是
+   public/terms.html 与 public/privacy.html，直接编辑这两个 HTML。
+   支付与订单相关页面不在本仓库，单独部署。
+
+10. 常见问题
+    - 页面全白：多半是模型文件路径不对，看浏览器控制台的 404。
+    - 进不去房间：VITE_WS_URL 没配或服务端没启动。
+    - 构建后图片 404：确认 base 配置，静态托管子目录时用 --base ./。
