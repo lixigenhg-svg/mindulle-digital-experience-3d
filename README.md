@@ -124,4 +124,4 @@ VITE_WS_URL=ws://localhost:8080 npm run dev     # 프런트 연결
 - 다인 모드는 서버가 없으면 자동으로 단일 모드로 동작합니다.
 - 모바일에서는 그림자 품질이 낮아지는 대신 프레임을 유지합니다.
 
-- 체험 링크: [https://mindulle.kr/3d/](https://mindulle.kr/3d/)
+- 체험 링크: https://3d.mindulle.kr 
