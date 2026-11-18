@@ -10,7 +10,7 @@ import base64, gzip, json, pathlib, re, subprocess
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DIST = ROOT / 'dist'
 TMP = ROOT / 'build_tmp'
-OUT = ROOT / '单文件' / '민들레-3D-체험관.html'
+OUT = ROOT / '单文件' / '민들레-4D-체험관.html'
 TMP.mkdir(exist_ok=True)
 
 # ---------- 1. 衍生资源：贴图缩到 600px webp、logo 转 webp、木鱼转 24k mp3 ----------
@@ -45,6 +45,10 @@ FILES = [
     ('assets/tex/outside.jpg',                  TMP/'t2_outside.webp', 'image/webp'),
     ('assets/tex/wall.jpg',                     TMP/'t2_wall.webp',    'image/webp'),
     ('assets/intro-logo.png',                   TMP/'logo.webp',       'image/webp'),
+    ('assets/audio/ambient_loop.mp3',          None,              'audio/mpeg'),
+    ('assets/audio/ambience_loop.m4a',         None,              'audio/mp4'),
+    ('assets/audio/forest.mp3',                None,              'audio/mpeg'),
+    ('assets/audio/leaves.mp3',                None,              'audio/mpeg'),
     ('assets/audio/bead_click.m4a',             None,              'audio/mp4'),
     ('assets/audio/cloth.m4a',                  None,              'audio/mp4'),
     ('assets/audio/wood_hit.m4a',           None,              'audio/mp4'),

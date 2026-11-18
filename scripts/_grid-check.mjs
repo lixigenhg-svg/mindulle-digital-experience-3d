@@ -1,0 +1,14 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await b.newPage({ viewport: { width: 900, height: 1200 } });
+await p.goto('http://localhost:5288/', { waitUntil: 'load' });
+await p.waitForTimeout(16000);
+await p.evaluate(()=>window.__MD__?.enter?.());
+await p.waitForTimeout(2500);
+await p.evaluate(()=>window.__MD_WALK__(0,-1.0));
+await p.waitForTimeout(4000);
+await p.screenshot({ path: '/tmp/g1.png' });
+await p.evaluate(()=>window.__MD_WALK__(-4.6,-2.6));
+await p.waitForTimeout(5000);
+await p.screenshot({ path: '/tmp/g2.png' });
+await b.close();

@@ -1,0 +1,10 @@
+import { chromium, devices } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const c = await b.newContext({ viewport:{width:1768,height:766}, deviceScaleFactor:1 });
+const p = await c.newPage();
+await p.goto('http://localhost:5288/',{waitUntil:'load'});
+await p.waitForTimeout(3500); await p.screenshot({path:'/tmp/it1.png'});
+const m = await (await b.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true })).newPage();
+await m.goto('http://localhost:5288/',{waitUntil:'load'});
+await m.waitForTimeout(3500); await m.screenshot({path:'/tmp/it2.png'});
+await b.close();

@@ -1,0 +1,16 @@
+import { chromium, devices } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({ ...devices['iPhone 13'], isMobile:true, hasTouch:true })).newPage();
+await p.goto('http://localhost:5288/',{waitUntil:'load'});
+await p.waitForTimeout(6000);
+await p.waitForFunction(()=>window.__MD__,null,{timeout:30000});
+await p.evaluate(()=>window.__MD__.enter());
+await p.evaluate(()=>window.__MD_TP__(0,-5.55));
+await p.waitForTimeout(600);
+await p.evaluate(()=>{window.__MD_LOCK__=true; window.__MD_FACE__(0); window.__MD_FIXCAM__([-2.3,1.4,-5.72],[0,1.0,-5.55]);});
+await p.waitForTimeout(2000); await p.screenshot({path:'/tmp/pb1.png'});
+await p.evaluate(()=>{window.__MD_FACE__(Math.PI);});
+await p.waitForTimeout(1500); await p.screenshot({path:'/tmp/pb2.png'});
+await p.evaluate(()=>{window.__MD_FACE__(0); window.__MD_FIXCAM__([0.2,1.35,-6.9],[0,1.0,-5.55]);});
+await p.waitForTimeout(1800); await p.screenshot({path:'/tmp/pb3.png'});
+await b.close();

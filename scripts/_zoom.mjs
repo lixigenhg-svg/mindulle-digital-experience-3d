@@ -1,0 +1,15 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const ctx = await b.newContext({viewport:{width:1600,height:900},deviceScaleFactor:2});
+const p = await ctx.newPage();
+await p.goto('http://127.0.0.1:5199/');
+await p.waitForTimeout(3500);
+await p.getByTestId('enter-button').click();
+await p.waitForTimeout(3200);
+await p.mouse.move(800,450);
+await p.mouse.wheel(0,-700);
+await p.waitForTimeout(1500);
+await p.evaluate(()=>window.__MD__.play('PRAY'));
+await p.waitForTimeout(1600);
+await p.screenshot({path:'/tmp/demo/zoom-test.png'});
+await b.close();

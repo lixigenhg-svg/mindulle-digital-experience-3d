@@ -4,8 +4,10 @@
  */
 import { useEffect, useRef, useSyncExternalStore , useState} from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
+import { consumeGyro } from '../immersive';
 import * as THREE from 'three';
 import { BOUNDS, BOUNDS_Z_MIN, BOUNDS_Z_MAX, CAM, MOVE_SPEED, CUSHION_ROWS, CUSHION_COLS, HALL_SCALE } from '../config';
+import { playerPos } from './pos';
 import { exteriorObstacles, treeObstacles } from '../scene/Exterior';
 import { stick } from './input';
 import { sharedAudio } from '../audio';
@@ -13,6 +15,7 @@ import { playerMotion } from '../avatar/animState';
 import { SEATS, SEAT_RADIUS } from './seats';
 import type { ActionMachine } from '../actions';
 import FigureAvatar from '../avatar/FigureAvatar';
+import PaidAura from '../scene/PaidAura';
 import RiggedAvatar from '../avatar/RiggedAvatar';
 import SculptAvatar from '../avatar/SculptAvatar';
 import BoneAvatar from '../avatar/BoneAvatar';
@@ -389,8 +392,17 @@ export default function LocalPlayer({ name, color, machine, onMove }: LocalPlaye
   const desiredCam = new THREE.Vector3();
 
   useFrame((_, dtRaw) => {
+    // 玩家真实位置：环境层用它判断殿内/殿外，避免殿内落雨雪
+    playerPos.x = state.current.pos.x;
+    playerPos.z = state.current.pos.z;
     const dt = Math.min(dtRaw, 0.05);
     const s = state.current;
+    // 陀螺仪：把手机倾斜量叠到视角上（未开启时返回 null，完全不参与计算）
+    const gyro = consumeGyro();
+    if (gyro && !s.fixCam) {
+      s.yaw += gyro.yaw;
+      s.pitch = THREE.MathUtils.clamp(s.pitch + gyro.pitch, CAM.pitchMin, CAM.pitchMax);
+    }
     const lock = machine.moveLock();
 
     move.set(0, 0, 0);
@@ -666,6 +678,7 @@ const contactShadowTex = (() => {
           RiggedAvatar({ color, action, anim: state.current.anim, bob: state.current.bob })
         )}
         <NameTag name={name} />
+              <PaidAura />
       </group>
     </>
   );

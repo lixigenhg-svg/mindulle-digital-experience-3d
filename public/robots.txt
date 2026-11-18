@@ -1,0 +1,5 @@
+# 민들레 4D 체험관
+User-agent: *
+Allow: /
+
+Sitemap: https://3d.mindulle.kr/sitemap.xml

@@ -8,6 +8,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import ExperienceScene from './scene/ExperienceScene';
 import Exterior from './scene/Exterior';
 import Environment from './scene/Environment';
+import SensoryLayer from './scene/SensoryLayer';
 import * as THREE from 'three';
 import LocalPlayer, { type MoveSnapshot, nearestFreeCushion } from './player/LocalPlayer';
 import { nearestSeat } from './player/seats';
@@ -29,6 +30,8 @@ import { Net } from './net';
 import { makeIdentity } from './names';
 import { bumpInstance, parseRoom, MOVE_SEND_INTERVAL } from './config';
 import { store } from './store';
+import { haptic } from './immersive';
+import { expireNightPass } from './paid';
 
 const IS_MOBILE =
   typeof matchMedia !== 'undefined' && (matchMedia('(pointer:coarse)').matches || innerWidth < 768);
@@ -52,6 +55,13 @@ function StatsBridge({
 }) {
   const gl = useThree(s => s.gl);
   glRef.current = gl;
+  // 프리미엄 야간 이용권：到期自动收回夜间亮度（每 30 秒检查一次）
+  useEffect(() => {
+    const id = window.setInterval(() => expireNightPass(), 30000);
+    expireNightPass();
+    return () => window.clearInterval(id);
+  }, []);
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       statsRef.current = {
@@ -113,6 +123,11 @@ export default function App() {
       // 免得服务器收到不认识的事件（服务端代码一个字都不用动）。
       if (ev !== 'offer') netRef.current?.sendAction(ev);
       audioRef.current?.trigger(ev);
+      // 沉浸式触感：动作与声音同步震一下（桌面浏览器自动忽略）
+      if (ev === 'wood_hit') haptic('strong');
+      else if (ev === 'offer') haptic('double');
+      else if (ev === 'pray' || ev === 'bow_start' || ev === 'sit_start' || ev === 'incense') haptic('soft');
+      else if (ev === 'beads_start') haptic('tick');
     });
   }
   const machine = machineRef.current;
@@ -343,6 +358,7 @@ export default function App() {
     if (!turned) return;
     store.addBeads(turned);
     audioRef.current?.beadTick();
+    haptic('tick');
   };
 
   // 刷新回来：如果上次是坐着的，自动把这个姿势接上，不用再点一次
@@ -423,6 +439,7 @@ export default function App() {
         window.setTimeout(() => {
           store.lightIncense();                // 插香：香头点亮、青烟升起
           store.toast('향을 올렸습니다');
+          haptic('double');
         }, 3800);
         window.setTimeout(() => {
           cam?.(2.0, 0.20, -1.35);
@@ -495,6 +512,7 @@ export default function App() {
   const onBell = () => {
     store.ringBell();
     audioRef.current?.bell();
+    haptic('strong');
   };
 
   const onWish = () => {
@@ -539,6 +557,7 @@ export default function App() {
         <Environment intensity={0.55} />
         <ExperienceScene />
         <Exterior />
+        <SensoryLayer />
         <LocalPlayer
           name={identity.name}
           color={identity.color}

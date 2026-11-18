@@ -1,0 +1,17 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({viewport:{width:1200,height:720}})).newPage();
+const errs=[]; p.on('pageerror', e=>errs.push(String(e).slice(0,120)));
+await p.goto('http://localhost:5297/3d/',{waitUntil:'load',timeout:90000});
+await p.waitForTimeout(4500);
+await p.evaluate(()=>window.__MD__.enter());
+await p.waitForTimeout(9000);
+await p.evaluate(()=>window.__MD__.kowtowNow());
+await p.waitForTimeout(16000);
+const pos = await p.evaluate(()=>window.__MD_POS__?.());
+console.log('落点:', pos);
+await p.evaluate((q)=>window.__MD_FIXCAM__([q.x+2.2,1.5,q.z-3.2],[q.x,0.6,q.z]), pos);
+await p.waitForTimeout(1200);
+await p.screenshot({path:'/tmp/oss_bow2.png',timeout:90000});
+console.log('pageerror:', errs.length, errs.slice(0,2));
+await b.close();

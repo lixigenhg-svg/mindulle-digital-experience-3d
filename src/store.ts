@@ -62,7 +62,7 @@ class MindulleStore {
   hud: HudState = {
     roomId: '',
     count: 1,
-    capacity: 20,
+    capacity: 100,
     status: null,
     muted: false,
     toast: null,
@@ -131,6 +131,18 @@ class MindulleStore {
     if (!e) return;
     e.x = x; e.z = z; e.rot = rot; e.anim = anim;
     this.emit();
+  }
+
+  /** 整包位置快照：一条消息里几十个人一起更新，只通知一次（否则 100 人同殿会 495 次/秒重渲染） */
+  movePeersBatch(items: Array<[string, number, number, number, string]>): void {
+    let touched = false;
+    for (const it of items) {
+      const e = this.peers.get(it[0]);
+      if (!e) continue;
+      e.x = it[1]; e.z = it[2]; e.rot = it[3]; e.anim = it[4];
+      touched = true;
+    }
+    if (touched) this.emit();
   }
 
   peerAction(id: string, action: string): void {

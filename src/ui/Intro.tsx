@@ -44,17 +44,17 @@ export default function Intro({ onEnter, onToggleSound, muted }: IntroProps) {
         </div>
 
         <p className="intro-eyebrow">전통 공간을 걷는 디지털 체험</p>
-        <h1 className="intro-title intro-title-name">민들레 3D 체험관</h1>
+        <h1 className="intro-title intro-title-name">민들레 4D 체험관</h1>
         <p className="intro-subtitle">빛과 소리로 만나는 전통 공간</p>
         <p className="intro-copy">
           빛을 켜고, 둘러보고,
           <br />
-          잠깐 쉬어가는 3D 체험 공간.
+          빛과 소리로 머무는 4D 몰입 공간.
         </p>
 
         <div className="intro-actions">
           <button type="button" className="intro-enter" data-testid="enter-button" onClick={onEnter}>
-            3D 체험 시작
+            4D 체험 시작
             
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 12h15M13 5l7 7-7 7" />
@@ -88,7 +88,7 @@ export default function Intro({ onEnter, onToggleSound, muted }: IntroProps) {
         <span>예 갖추기</span>
         <span>108 구슬</span>
         <span>나무북</span>
-        <p>잠시 머무는 3D 체험 공간 · MINDULLE</p>
+        <p>잠시 머무는 4D 몰입 공간 · MINDULLE</p>
       </footer>
     </main>
   );

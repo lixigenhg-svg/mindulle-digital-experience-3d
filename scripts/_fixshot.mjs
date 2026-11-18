@@ -1,0 +1,17 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const ctx = await b.newContext({ viewport:{width:1400,height:760}, deviceScaleFactor:1 });
+const p = await ctx.newPage();
+await p.goto('http://localhost:5288/', { waitUntil: 'load' });
+await p.waitForTimeout(6000);
+await p.waitForFunction(()=>window.__MD__, null, {timeout:30000});
+await p.evaluate(()=>window.__MD__.enter());
+await p.waitForTimeout(1200);
+await p.evaluate(()=>{window.__MD_TP__(0,-5.95); window.__MD_FACE__(Math.PI); window.__MD_FIXCAM__([3.05,1.42,-6.45],[0.35,0.95,-7.00]);});
+await p.waitForTimeout(3000);
+await p.screenshot({path:'/tmp/shFixA.png'});
+await p.evaluate(()=>window.__MD_FIXCAM__([1.30,0.96,-6.15],[0,0.82,-6.98]));
+await p.waitForTimeout(3000);
+await p.screenshot({path:'/tmp/shFixB.png'});
+console.log(JSON.stringify(await p.evaluate(()=>window.__MD_POS__())));
+await b.close();

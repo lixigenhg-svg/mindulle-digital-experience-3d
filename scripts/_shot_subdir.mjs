@@ -1,0 +1,17 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({ viewport:{width:1768,height:952} })).newPage();
+const bad=[];
+p.on('response', r=>{ if(r.status()>=400) bad.push(r.status()+' '+r.url()); });
+p.on('requestfailed', r=>bad.push('FAIL '+r.url()));
+await p.goto('http://localhost:5296/3d/',{waitUntil:'load', timeout:90000});
+await p.waitForTimeout(5000);
+await p.waitForFunction(()=>window.__MD__,null,{timeout:90000});
+await p.evaluate(()=>window.__MD__.enter());
+await p.waitForTimeout(8000);
+await p.evaluate(()=>{window.__MD_TP__(0, 4.0);});
+await p.waitForTimeout(700);
+await p.evaluate(()=>window.__MD_FIXCAM__([0,1.55,6.2],[0.9,0.85,-1.6]));
+await p.waitForTimeout(1200); await p.screenshot({path:'/tmp/verify_sub.png', timeout:90000});
+console.log('bad requests:', bad.length); bad.slice(0,10).forEach(x=>console.log('  ',x));
+await b.close();

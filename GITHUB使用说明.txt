@@ -1,8 +1,8 @@
-민들레 3D 체험관 — GitHub 使用说明
+민들레 4D 체험관 — GitHub 使用说明
 ====================================
 
 1. 这是什么
-   浏览器里可走动的 3D 数字体验馆。React 18 + Vite 5 + Three.js 0.160 +
+   浏览器里可走动的 4D 数字体验馆。React 18 + Vite 5 + Three.js 0.160 +
    react-three-fiber。纯前端，构建产物是静态文件，可放在任意静态托管上。
 
 2. 环境要求
@@ -23,7 +23,14 @@
    wss://你的域名/ws，然后重新 npm run build。
    服务端脚本在 server/ws-server.mjs，用 Node 直接启动：
    node server/ws-server.mjs
-   默认容量 20 人，端口与跨域名单在该文件顶部常量里。
+   可通过环境变量调整（不改代码）：
+     PORT=8090            监听端口
+     CAPACITY=100         一个殿的容量，默认 100
+     MAX_HALLS=100        最多自动开到第几殿，默认 100
+     ALLOW_ORIGIN=https://mindulle.kr,https://3d.mindulle.kr
+   满员会自动开下一殿、人走空自动关殿，前端不需要额外配置。
+   运行状态页：https://3d.mindulle.kr/monitor.html （随 dist 一起发布）。
+   位置数据每 200ms 合并一包发送，一殿 100 人走动时下行约 1.5MB/s，旧写法约 10MB/s。
 
 6. 目录说明
    src/            前端源码

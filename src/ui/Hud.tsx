@@ -58,7 +58,7 @@ export default function Hud({ onToggleSound, onToggleListen, onExit, onScreensho
             className="flex items-center gap-1.5 text-[13px] font-semibold text-white whitespace-nowrap transition hover:bg-white/10 rounded-full px-1.5 py-0.5"
             aria-label="서버 선택"
           >
-            민들레 3D 체험관 {room}
+            민들레 4D 체험관 {room}
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="opacity-80">
               <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -128,8 +128,19 @@ export default function Hud({ onToggleSound, onToggleListen, onExit, onScreensho
         </div>
       </div>
 
-      {/* 배경음 켜기 */}
-      <div className="pointer-events-auto flex justify-end">
+      {/* 배경음 켜기 + 프리미엄 진입 */}
+      <div className="pointer-events-auto flex justify-end gap-2">
+        <button
+          type="button"
+          data-testid="open-premium"
+          onClick={() => {
+            try { sessionStorage.setItem('mindulle.premiumFocus', '1'); } catch { /* ignore */ }
+            store.setSettingsOpen(true);
+          }}
+          className="rounded-full border border-amber-200/40 bg-amber-100/12 px-4 py-2 text-sm text-amber-100 backdrop-blur-md transition hover:bg-amber-100/20"
+        >
+          프리미엄
+        </button>
         <button
           type="button"
           onClick={onToggleListen}

@@ -341,7 +341,10 @@ canvas {
 }
 .mala-close:hover { color: #fff; border-color: rgba(201, 163, 92, 0.6); }
 
-.mala-wheel { display: grid; place-items: center; margin: 4px 0 0; }
+/* 夜间：只对 3D 画面压一点亮度与饱和，不影响 UI 可读性 */
+html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transition: filter 1.4s ease; }
+
+.mala-wheel { display: grid; place-items: center; margin: 4px 0 0; perspective: 900px; }
 .mala-wheel svg {
   width: min(62vw, 330px);
   max-height: 46dvh;
@@ -350,12 +353,16 @@ canvas {
   cursor: grab;
   touch-action: none;
   user-select: none;
+  /* 轻微俯视倾角：珠串从平铺的圆变成有纵深的环 */
+  transform: rotateX(13deg);
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 16px 26px rgba(0, 0, 0, 0.46));
 }
 .mala-wheel svg.is-dragging { cursor: grabbing; }
 .mala-track { fill: none; stroke: rgba(201, 163, 92, 0.18); stroke-width: 1.2; }
 .mala-inner-track { fill: none; stroke: rgba(239, 230, 211, 0.07); stroke-width: 1; stroke-dasharray: 2 6; }
-.mala-dot { fill: rgba(201, 163, 92, 0.38); transition: fill 0.2s ease, r 0.2s ease; }
-.mala-dot.is-lit { fill: #e2bd76; filter: drop-shadow(0 0 4px rgba(226, 189, 118, 0.55)); }
+.mala-dot { transition: opacity 0.2s ease, r 0.2s ease; }
+.mala-dot.is-lit { stroke: rgba(255, 226, 170, 0.5); stroke-width: 0.55; }
 .mala-marker path { fill: #a8452f; transition: transform 0.2s ease; }
 .mala-count {
   fill: #f2e9d7;

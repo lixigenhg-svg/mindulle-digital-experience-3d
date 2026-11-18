@@ -44,7 +44,7 @@ VITE_WS_URL=ws://127.0.0.1:8123 npm run dev -- --port 5190 --strictPort
 2. **三尊塑像首为临时件**：`statue.glb` / `statue-alt/west.glb` / `bodhisattva-right.glb` 是同一枚
    CC BY 4.0 塑像首莲瓣浮雕副本，仅用于跑通 GLTF→PBR→金铜染色→阴影→环境反射链路，不是最终造像。
    正式模型覆盖同名文件即可，无需改代码。
-3. **双 WebGL 上下文黑屏**：沙箱 swiftshader 同时开第二个浏览器上下文时，3D 画布可能不绘制（网络同步仍正常）。
+3. **双 WebGL 上下文黑屏**：沙箱 swiftshader 同时开第二个浏览器上下文时，WebGL 画布可能不绘制（网络同步仍正常）。
    这是测试环境并发 WebGL 限制；真实浏览器每个标签页独立进程，不受影响。单上下文连 WS 渲染已验证正常。
 4. **未覆盖项**：真机 iOS Safari 音频解锁、108 珠串计数、上香烟雾粒子、殿外庭院、真实支付接入，留待后续阶段。
 

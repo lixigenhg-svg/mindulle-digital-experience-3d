@@ -1,0 +1,22 @@
+import { chromium } from '@playwright/test';
+const b = await chromium.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader']});
+const p = await (await b.newContext({viewport:{width:1600,height:900}})).newPage();
+let lampBody = null;
+p.on('response', async r => { if (r.url().includes('lamp-list.php')) { try { lampBody = (await r.text()).slice(0,200); } catch {} } });
+await p.goto('https://mindulle.kr/3d/',{waitUntil:'load',timeout:120000});
+await p.waitForTimeout(14000);
+await p.evaluate(()=>window.__MD__?.enter());
+await p.waitForTimeout(14000);
+const hide = () => p.evaluate(() => { document.querySelectorAll('div,span,p').forEach(el => { if (el.children.length===0 && (el.textContent||'').includes('연결이 끊')) el.style.display='none'; }); });
+await hide();
+await p.evaluate(()=>window.__MD_TP__(0, 40.0)); await p.waitForTimeout(3000);
+await p.evaluate(()=>window.__MD_FACE__(Math.PI));
+await p.evaluate(()=>window.__MD_FIXCAM__([0,1.9,38.8],[0,1.35,34.2]));
+await p.waitForTimeout(3000); await hide();
+await p.screenshot({path:'/tmp/live_lamp1.png',timeout:120000});
+// 第二机位：稍远看整排
+await p.evaluate(()=>window.__MD_FIXCAM__([2.2,2.6,42.0],[0,1.2,34.4]));
+await p.waitForTimeout(2800); await hide();
+await p.screenshot({path:'/tmp/live_lamp2.png',timeout:120000});
+console.log('lamp-list 响应:', lampBody);
+await b.close();
