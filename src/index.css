@@ -297,13 +297,13 @@ canvas {
   padding: 16px;
   background: rgba(8, 11, 8, 0.66);
   backdrop-filter: blur(8px);
-  animation: intro-fade 0.3s ease both;
+  opacity: 1;
 }
 .mala-panel {
-  width: min(440px, calc(100vw - 24px));
+  width: min(640px, calc(100vw - 12px));
   max-height: 92dvh;
   overflow: auto;
-  padding: 22px 24px 20px;
+  padding: 18px 16px 16px;
   border: 1px solid rgba(201, 163, 92, 0.45);
   background:
     radial-gradient(ellipse at 50% 0%, rgba(201, 163, 92, 0.12), transparent 55%),
@@ -344,9 +344,37 @@ canvas {
 /* 夜间：只对 3D 画面压一点亮度与饱和，不影响 UI 可读性 */
 html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transition: filter 1.4s ease; }
 
-.mala-wheel { display: grid; place-items: center; margin: 4px 0 0; perspective: 900px; }
+.mala-wheel {
+  position: relative;
+  width: min(92vw, 100%, 600px);
+  aspect-ratio: 1;
+  margin: 4px auto 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  perspective: 900px;
+}
+.mala-wheel.is-dragging { cursor: grabbing; }
+.mala-3d {
+  position: absolute;
+  inset: 0;
+  transform: rotateX(13deg);
+  filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.5));
+}
+.mala-3d canvas { display: block; width: 100% !important; height: 100% !important; }
+.mala-wheel .mala-3d canvas { filter: none; }
+.mala-wheel .mala-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  transform: none;
+  filter: none;
+  pointer-events: none;
+}
 .mala-wheel svg {
-  width: min(62vw, 330px);
+  width: min(92vw, 100%, 600px);
   max-height: 46dvh;
   aspect-ratio: 1;
   display: block;
@@ -443,7 +471,17 @@ html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transi
   .intro-foot span:not(:last-of-type)::after { display: none; }
   .intro-foot p { display: none; }
   .mala-panel { padding: 18px 16px 16px; }
-  .mala-wheel svg { width: min(76vw, 300px); }
+  .mala-wheel .mala-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  transform: none;
+  filter: none;
+  pointer-events: none;
+}
+.mala-wheel svg { width: min(76vw, 300px); }
   .mala-foot { flex-direction: column; align-items: stretch; }
   .mala-actions { justify-content: flex-end; }
   .hud-beads { top: 3.2rem; }
