@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const browser=await chromium.launch({executablePath:'/opt/vm/preinstall/ms-playwright/chromium-1169/chrome-linux/chrome'});
+const page=await browser.newPage({viewport:{width:1440,height:900}});
+const now=Date.now();
+await page.addInitScript(({now})=>{localStorage.setItem('mindulle.entered','1');localStorage.setItem('mindulle.pass',JSON.stringify({code:'123456',verified:true,unlockedAt:now,premiumUntil:now+30*86400000,privatePass:true,aura:'gold',lotus:true,nightUntil:0}));},{now});
+await page.goto('http://127.0.0.1:5173/?room=pri-6633&region=apac',{waitUntil:'load'});
+await page.fill('input[placeholder="000000"]','551049'); await page.click('button:has-text("금각 열기")'); await page.waitForTimeout(2200);
+await page.click('button:has-text("초대")'); await page.waitForTimeout(300);
+console.log('INVITE', (await page.locator('body').innerText()).includes('초대 키'));
+await page.click('button:has-text("닫기")'); await page.waitForTimeout(250);
+console.log('CLOSED', !(await page.locator('text=초대하기').count()));
+await browser.close();

@@ -1,0 +1,72 @@
+import { chromium } from 'playwright';
+const exe='/opt/vm/preinstall/ms-playwright/chromium-1169/chrome-linux/chrome';
+const browser=await chromium.launch({executablePath:exe});
+const page=await browser.newPage({viewport:{width:1440,height:900}});
+const errors=[]; page.on('console',m=>{if(m.type()==='error') errors.push(m.text());}); page.on('pageerror',e=>errors.push('PAGEERROR '+e.message));
+const now=Date.now();
+await page.addInitScript(({now})=>{localStorage.setItem('mindulle.entered','1');localStorage.setItem('mindulle.pass',JSON.stringify({code:'123456',verified:true,unlockedAt:now,premiumUntil:now+30*86400000,privatePass:true,aura:'gold',lotus:true,nightUntil:0}));},{now});
+await page.goto('http://127.0.0.1:5173/',{waitUntil:'load'});
+await page.waitForTimeout(800);
+console.log('PUBLIC', (await page.locator('body').innerText()).slice(0,120));
+await page.click('[aria-label="설정"]');
+await page.waitForTimeout(300);
+console.log('SETTINGS_HAS_PRIVATE', await page.locator('text=프라이빗 금각').count());
+const btn=page.locator('[data-testid="make-room"]');
+console.log('CREATE_BUTTON', await btn.count(), await btn.innerText());
+await btn.click({timeout:10000});
+await page.waitForTimeout(4000);
+if(!(await page.locator('[data-testid="room-link"]').count())) throw new Error('room-link missing');
+const link=await page.locator('[data-testid="room-link"] p').first().innerText();
+const key=await page.locator('[data-testid="room-link"] span.font-mono').innerText();
+console.log('CREATED',link,key);
+await page.screenshot({path:'/tmp/test-created.png',timeout:60000});
+await page.goto(link,{waitUntil:'load'});
+await page.waitForTimeout(800);
+console.log('GATE', (await page.locator('body').innerText()).slice(0,220));
+await page.fill('input[placeholder="000000"]','000000');
+await page.click('button:has-text("금각 열기")');
+await page.waitForTimeout(1000);
+console.log('WRONG_ERROR', (await page.locator('body').innerText()).includes('초대 키가 올바르지 않습니다')||(await page.locator('body').innerText()).slice(0,350));
+await page.fill('input[placeholder="000000"]',key);
+await page.click('button:has-text("금각 열기")');
+await page.waitForTimeout(3000);
+console.log('ENTERED', page.url(), (await page.locator('body').innerText()).slice(0,220));
+await page.screenshot({path:'/tmp/test-entered.png',timeout:60000});
+// tea
+await page.click('button:has-text("다실")');
+await page.waitForTimeout(300);
+console.log('TEA_MODAL', (await page.locator('body').innerText()).includes('금각의 다실'), (await page.locator('body').innerText()).slice(-260));
+await page.click('button:has-text("차 따르기")');
+await page.waitForTimeout(200);
+await page.click('button:has-text("한 잔 들기")');
+await page.waitForTimeout(200);
+await page.click('button:has-text("차 마시기")');
+await page.waitForTimeout(300);
+console.log('TEA_DONE', (await page.locator('body').innerText()).includes('차를 마셨습니다'));
+// close via modal x maybe button text 닫기
+await page.click('button:has-text("닫기")');
+// lamp
+await page.click('button:has-text("장명등")');
+await page.waitForTimeout(300);
+console.log('LAMP_TOAST', (await page.locator('body').innerText()).match(/장명등[^\n]*/)?.[0]);
+// wish
+await page.click('button:has-text("서원")');
+await page.waitForTimeout(300);
+console.log('WISH_MODAL', (await page.locator('body').innerText()).includes('서원 남기기'));
+const ta=page.locator('textarea');
+if(await ta.count()) await ta.fill('가족의 건강을 빕니다');
+await page.click('button:has-text("남기기")');
+await page.waitForTimeout(300);
+console.log('WISH_OK', (await page.locator('body').innerText()).includes('서원을 금각에 남겼습니다'));
+// mood
+await page.click('button:has-text("분위기")');
+await page.waitForTimeout(300);
+console.log('MOOD_TOAST', (await page.locator('body').innerText()).match(/분위기 ·[^\n]*/)?.[0]);
+// invite
+await page.click('button:has-text("초대")');
+await page.waitForTimeout(300);
+const inviteText=(await page.locator('body').innerText());
+console.log('INVITE_HAS_KEY', inviteText.includes(key), inviteText.slice(-300));
+await page.screenshot({path:'/tmp/test-invite.png',timeout:60000});
+console.log('ERRORS', errors.slice(0,10));
+await browser.close();

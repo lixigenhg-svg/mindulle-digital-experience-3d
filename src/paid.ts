@@ -6,7 +6,8 @@
  *     只有服务端明确 success 才解锁，失败/404/超时一律不解锁。
  *   - 光效：光环颜色（금/월백/청련/강）+ 연꽃 발광（脚下莲花圈）
  *   - 야간 30분 이용권：把场景切到夜间亮度，30 分钟后自动恢复
- *   - 프라이빗 방：生成房间链接（走现有 ?room= 机制，不改服务端）
+ *   - 프라이빗 금각：只有 10,000원 사랑하는 이에게 档（privatePass）可创建；
+ *     房号 + 6 位密钥由服务端生成，进房时服务端校验。
  *
  * 不写数据库、不改接口字段；只读本地 localStorage。
  */
@@ -40,6 +41,8 @@ export interface PaidState {
   unlockedAt: number;
   /** 1개월 이용권到期时间（毫秒）；0 表示未生效 */
   premiumUntil: number;
+  /** 10,000원 사랑하는 이에게 선물専用：프라이빗 금각 권益 */
+  privatePass: boolean;
   aura: AuraId;
   lotus: boolean;
   /** 야간 이용권到期时间（0 表示未使用） */
@@ -54,6 +57,7 @@ const EMPTY: PaidState = {
   verified: false,
   unlockedAt: 0,
   premiumUntil: 0,
+  privatePass: false,
   aura: 'none',
   lotus: false,
   nightUntil: 0,
@@ -70,6 +74,7 @@ function read(): PaidState {
       verified: !!o.verified,
       unlockedAt: typeof o.unlockedAt === 'number' ? o.unlockedAt : 0,
       premiumUntil: typeof o.premiumUntil === 'number' ? o.premiumUntil : 0,
+      privatePass: !!o.privatePass,
       aura,
       lotus: !!o.lotus,
       nightUntil: typeof o.nightUntil === 'number' ? o.nightUntil : 0,
@@ -111,6 +116,11 @@ export function isUnlocked(s: PaidState = state): boolean {
   return s.verified && s.premiumUntil > Date.now();
 }
 
+/** 私密金阁：必须同时有 1 个月 프리미엄 与 10,000 档标记 */
+export function isPrivateEntitled(s: PaidState = state): boolean {
+  return isUnlocked(s) && s.privatePass === true;
+}
+
 /** 当前生效的光环（未解锁时返回 none） */
 export function activeAura(s: PaidState = state): AuraDef | null {
   if (!isUnlocked(s) || s.aura === 'none') return null;
@@ -149,7 +159,7 @@ export async function redeemCode(raw: string): Promise<{ ok: boolean; message: s
       return { ok: false, message: '지금은 코드를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.', verified: false };
     }
 
-    const data = (await res.json()) as { success?: boolean; ok?: boolean; msg?: string; until_ts?: number };
+    const data = (await res.json()) as { success?: boolean; ok?: boolean; msg?: string; until_ts?: number; private?: boolean };
     const passed = data.success === true || data.ok === true;
     if (!passed) {
       return {
@@ -167,6 +177,7 @@ export async function redeemCode(raw: string): Promise<{ ok: boolean; message: s
       premiumUntil: typeof data.until_ts === 'number' && data.until_ts > 0
         ? data.until_ts
         : Date.now() + 30 * 86400000,
+      privatePass: data.private === true,
       aura: state.aura === 'none' ? 'gold' : state.aura,
     });
 
@@ -195,9 +206,12 @@ export async function refreshPremium(): Promise<void> {
     });
     clearTimeout(timer);
     if (!res.ok) return;
-    const data = (await res.json()) as { success?: boolean; active?: boolean; until_ts?: number };
-    if (data.success === true && data.active === true && typeof data.until_ts === 'number' && data.until_ts > state.premiumUntil) {
-      persist({ ...state, premiumUntil: data.until_ts });
+    const data = (await res.json()) as { success?: boolean; active?: boolean; until_ts?: number; private?: boolean };
+    if (data.success === true && data.active === true) {
+      const patch: Partial<PaidState> = {};
+      if (typeof data.until_ts === 'number' && data.until_ts > state.premiumUntil) patch.premiumUntil = data.until_ts;
+      if (typeof data.private === 'boolean') patch.privatePass = data.private;
+      if (Object.keys(patch).length) persist({ ...state, ...patch });
     }
   } catch {
     /* 离线时保留当前到期时间，不永久解锁 */
@@ -207,7 +221,7 @@ export async function refreshPremium(): Promise<void> {
 /** 到期自动收回프리미엄；由 App 的定时器调用 */
 export function expirePremium(): void {
   if (state.premiumUntil > 0 && Date.now() >= state.premiumUntil) {
-    persist({ ...state, premiumUntil: 0 });
+    persist({ ...state, premiumUntil: 0, privatePass: false });
   }
 }
 

@@ -34,9 +34,9 @@ describe('礼佛动作状态机', () => {
   });
 
   it('木鱼 0.7s 后自动回收', () => {
-    machine.woodfish();
-    expect(machine.state).toBe('woodfish');
-    expect(events).toContain('woodfish');
+    machine.wood_hit();
+    expect(machine.state).toBe('wood_hit');
+    expect(events).toContain('wood_hit');
     machine.update(performance.now() + 800);
     expect(machine.state).toBe('idle');
   });

@@ -2,7 +2,7 @@
  * App.tsx —— 装配：入口页、3D 场景、本地玩家、远端容器、网络、音频、动作机、108 珠串与 DOM HUD。
  * 网络事件写状态仓；UI 与 3D 组件从仓读取。
  */
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react';
 import type { WebGLRenderer } from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import ExperienceScene from './scene/ExperienceScene';
@@ -23,6 +23,9 @@ import ServerModal from './ui/ServerModal';
 import SettingsModal from './ui/SettingsModal';
 import WishModal from './ui/WishModal';
 import Toast from './ui/Toast';
+import PrivateRoomGate from './ui/PrivateRoomGate';
+import PrivateRoomUI from './ui/PrivateRoomUI';
+import PrivateSalon, { type PrivateMood } from './scene/PrivateSalon';
 import { ActionMachine } from './actions';
 import { playerMotion } from './avatar/animState';
 import { AudioEngine, sharedAudio } from './audio';
@@ -32,6 +35,7 @@ import { bumpInstance, parseRoom, MOVE_SEND_INTERVAL } from './config';
 import { store } from './store';
 import { haptic } from './immersive';
 import { expireNightPass, expirePremium, refreshPremium } from './paid';
+import { forgetPrivateEntry, getPrivateEntry, isPrivateRoom, rememberPrivateEntry } from './privateRoom';
 
 const IS_MOBILE =
   typeof matchMedia !== 'undefined' && (matchMedia('(pointer:coarse)').matches || innerWidth < 768);
@@ -116,10 +120,14 @@ function SceneLoading() {
   );
 }
 
-export default function App() {
+function ExperienceApp({ privateKey = '', onPrivateDenied }: {
+  privateKey?: string;
+  onPrivateDenied?: (msg: string) => void;
+}) {
   // 本地玩家的法号固定为「민들레 안심」（蒲公英安心）
   const identity = useMemo(() => ({ ...makeIdentity(), name: '민들레 안심' }), []);
   const room = useMemo(parseRoom, []);
+  const isPrivate = isPrivateRoom(room.room);
 
   const audioRef = useRef<AudioEngine | null>(null);
   if (!audioRef.current) audioRef.current = new AudioEngine();
@@ -147,8 +155,13 @@ export default function App() {
 
   // 刷新页面不应该退回封面：进过一次就记住，下次直接进场景
   const [entered, setEntered] = useState(() => {
+    if (isPrivate) return true;
     try { return localStorage.getItem('mindulle.entered') === '1'; } catch { return false; }
   });
+  // 私密金阁：房内专属状态
+  const [privateMood, setPrivateMood] = useState<PrivateMood>('gold');
+  const [privateLamp, setPrivateLamp] = useState(true);
+  const [privateTea, setPrivateTea] = useState(0);
   // 是否在大殿内（决定动作条与功能性按钮是否出现）
   const [insideHall, setInsideHall] = useState(true);
   // 站在茶室坐垫 / 庭院长凳旁边时，殿外也浮出「坐下」按钮
@@ -207,15 +220,19 @@ export default function App() {
       onRoomFull: () => {
         bumpInstance(room);
         store.toast('방이 가득 차 다른 방으로 이동합니다');
-      }
-    });
+      },
+      onPrivateDenied: msg => {
+        store.toast(msg);
+        onPrivateDenied?.(msg);
+      },
+    }, privateKey);
     netRef.current = net;
     net.connect();
     return () => {
       net.destroy();
       netRef.current = null;
     };
-  }, [room, identity]);
+  }, [room, identity, privateKey, onPrivateDenied]);
 
   /* ---------- 音频解锁 + 空闲预加载 ---------- */
   useEffect(() => {
@@ -397,6 +414,13 @@ export default function App() {
 
   const exitExperience = () => {
     closeMala();
+    if (isPrivate) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('room');
+      url.searchParams.delete('instance');
+      window.location.href = url.toString();
+      return;
+    }
     setEntered(false);
     // 主动退出：清掉记忆，下次回来重新从封面进
     try {
@@ -562,21 +586,29 @@ export default function App() {
           setReady(true);
         }}
       >
-        <color attach="background" args={['#8fc0dd']} />
-        <fog attach="fog" args={['#b9cbd4', 30, 150]} />
-        <Environment intensity={0.55} />
-        <ExperienceScene />
-        <Exterior />
+        <color attach="background" args={[isPrivate ? '#0b0806' : '#8fc0dd']} />
+        <fog attach="fog" args={isPrivate ? ['#0b0806', 10, 30] : ['#b9cbd4', 30, 150]} />
+        {!isPrivate && <Environment intensity={0.55} />}
+        {isPrivate ? (
+          <PrivateSalon mood={privateMood} lampLit={privateLamp} tea={privateTea} />
+        ) : (
+          <>
+            <ExperienceScene />
+            <Exterior />
+          </>
+        )}
         <SensoryLayer />
         <LocalPlayer
           name={identity.name}
           color={identity.color}
           machine={machine}
+          privateMode={isPrivate}
+          spawn={isPrivate ? { x: 0, z: 13.4 } : undefined}
           onMove={s => {
             moveRef.current = s;
-            const inside = s.z < 30.6;
+            const inside = isPrivate ? true : s.z < 30.6;
             setInsideHall(prev => (prev === inside ? prev : inside));
-            const seat = nearestSeat(s.x, s.z, 1.8);
+            const seat = isPrivate ? null : nearestSeat(s.x, s.z, 1.8);
             const k = seat ? seat.kind : null;
             setSeatNear(prev => (prev === k ? prev : k));
           }}
@@ -606,7 +638,7 @@ export default function App() {
               {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '여기서 쉬어가기'}
             </button>
           )}
-          {insideHall && <ActionBar
+          {!isPrivate && insideHall && <ActionBar
             machine={machine}
             onOpenMala={openMala}
             onTour={onTour}
@@ -616,7 +648,21 @@ export default function App() {
             onSit={onSit}
             onKowtow={onKowtow}
             onBow={onBow}
+            onOffer={() => { machine.offer(); store.setDonationOpen(true); }}
           />}
+          {isPrivate && entered && (
+            <PrivateRoomUI
+              room={room.room}
+              inviteKey={privateKey}
+              mood={privateMood}
+              setMood={setPrivateMood}
+              lampLit={privateLamp}
+              setLampLit={setPrivateLamp}
+              tea={privateTea}
+              setTea={setPrivateTea}
+              onScreenshot={onScreenshot}
+            />
+          )}
           <MalaWheel
             open={malaOpen}
             beads={beads}
@@ -635,4 +681,36 @@ export default function App() {
       <Toast />
     </div>
   );
+}
+
+/**
+ * 入口壳：私密房先过密钥门；公共殿直接进原体验。
+ * 密钥只放 sessionStorage，URL 永远只有房号。
+ */
+export default function App() {
+  const room = useMemo(parseRoom, []);
+  const privateRoom = isPrivateRoom(room.room);
+  const [key, setKey] = useState(() => (privateRoom ? getPrivateEntry(room.room) : ''));
+  const [gateError, setGateError] = useState('');
+  const denied = useCallback((msg: string) => {
+    forgetPrivateEntry(room.room);
+    setKey('');
+    setGateError(msg);
+  }, [room.room]);
+
+  if (privateRoom && !key) {
+    return (
+      <PrivateRoomGate
+        room={room.room}
+        initialError={gateError}
+        onEnter={k => {
+          rememberPrivateEntry(room.room, k);
+          setGateError('');
+          setKey(k);
+        }}
+      />
+    );
+  }
+
+  return <ExperienceApp privateKey={privateRoom ? key : ''} onPrivateDenied={denied} />;
 }

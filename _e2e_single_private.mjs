@@ -1,0 +1,17 @@
+import { chromium } from 'playwright';
+const exe='/opt/vm/preinstall/ms-playwright/chromium-1169/chrome-linux/chrome';
+const browser=await chromium.launch({executablePath:exe,args:['--allow-file-access-from-files']});
+const page=await browser.newPage({viewport:{width:1440,height:900}});
+const errors=[]; page.on('pageerror',e=>errors.push(e.message));
+const now=Date.now();
+await page.addInitScript(({now})=>{localStorage.setItem('mindulle.entered','1');localStorage.setItem('mindulle.pass',JSON.stringify({code:'123456',verified:true,unlockedAt:now,premiumUntil:now+30*86400000,privatePass:true,aura:'gold',lotus:true,nightUntil:0}));localStorage.setItem('mindulle.private.rooms',JSON.stringify({'pri-9999':{room:'pri-9999',key:'123456',createdAt:now}}));},{now});
+await page.goto('file:///home/user/Doubao/chats/38453565767905538/demo-mindulle-4d-20261119.html?room=pri-9999&region=apac',{waitUntil:'load',timeout:60000});
+await page.waitForTimeout(2000);
+console.log('GATE',JSON.stringify((await page.locator('body').innerText()).slice(0,180)));
+await page.fill('input[placeholder="000000"]','123456');
+await page.click('button:has-text("금각 열기")');
+await page.waitForTimeout(2500);
+console.log('ENTER',JSON.stringify((await page.locator('body').innerText()).slice(0,180)));
+console.log('ERRORS',errors.slice(0,5));
+await page.screenshot({path:'/tmp/test-single-room.png',timeout:60000});
+await browser.close();

@@ -13,8 +13,8 @@ import { fetchLiveWeather } from '../liveWeather';
 import {
   AURAS,
   currentRoom,
+  isPrivateEntitled,
   isUnlocked,
-  makeRoomLink,
   nightMinutesLeft,
   redeemCode,
   setAura,
@@ -22,6 +22,7 @@ import {
   startNightPass,
   usePaid
 } from '../paid';
+import { createPrivateRoom } from '../privateRoom';
 
 /** 环境演出档位，文案固定为韩文（日文层另行翻译） */
 const WEATHERS: { id: WeatherMode; label: string }[] = [
@@ -47,6 +48,8 @@ export default function SettingsModal({ engine }: { engine: AudioEngine | null }
   const [codeInput, setCodeInput] = useState('');
   const [codeBusy, setCodeBusy] = useState(false);
   const [roomLink, setRoomLink] = useState('');
+  const [roomKey, setRoomKey] = useState('');
+  const [roomBusy, setRoomBusy] = useState(false);
   // 陀螺仪只在有传感器的手机上有意义：桌面浏览器即使有接口也读不到姿态
   const premiumRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -476,31 +479,73 @@ export default function SettingsModal({ engine }: { engine: AudioEngine | null }
 
           <div className="mt-2 rounded-xl bg-white/4 px-3 py-2.5">
             <div className="flex items-baseline justify-between">
-              <span className="text-[13px] text-white/85">프라이빗 방</span>
+              <span className="text-[13px] text-white/85">프라이빗 금각</span>
               <span className="text-[11px] text-white/45">현재 {currentRoom()}</span>
             </div>
-            <button
-              type="button"
-              data-testid="make-room"
-              disabled={!isUnlocked(paid)}
-              onClick={async () => {
-                const { url } = makeRoomLink();
-                setRoomLink(url);
-                try {
-                  await navigator.clipboard.writeText(url);
-                  store.toast('링크를 복사했습니다');
-                } catch {
-                  store.toast('링크가 만들어졌습니다');
-                }
-              }}
-              className="mt-2 w-full rounded-lg bg-white/10 py-1.5 text-[12px] text-white/80 transition hover:bg-white/16 disabled:opacity-50"
-            >
-              방 링크 만들기
-            </button>
-            {roomLink && (
-              <p className="mt-2 break-all text-[10px] leading-relaxed text-amber-100/70" data-testid="room-link">
-                {roomLink}
-              </p>
+            {!isPrivateEntitled(paid) ? (
+              <>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-white/50">
+                  사랑하는 이에게 · 10,000원 선물 전용<br />
+                  한 달 동안 나만의 금각과 초대 키가 열립니다.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    close();
+                    store.setDonationOpen(true);
+                  }}
+                  className="mt-2 w-full rounded-lg border border-amber-200/25 bg-amber-200/10 py-1.5 text-[12px] text-amber-100/90 transition hover:bg-amber-200/16"
+                >
+                  10,000원 선물 안내 보기
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-white/50">
+                  6자리 초대 키를 받은 사람만 들어올 수 있습니다.<br />
+                  방 인원은 제한하지 않습니다.
+                </p>
+                <button
+                  type="button"
+                  data-testid="make-room"
+                  disabled={roomBusy}
+                  onClick={async () => {
+                    setRoomBusy(true);
+                    try {
+                      const made = await createPrivateRoom();
+                      setRoomLink(made.url);
+                      setRoomKey(made.key);
+                      try {
+                        await navigator.clipboard.writeText(`${made.url}\n초대 키: ${made.key}`);
+                        store.toast('초대 링크와 키를 복사했습니다');
+                      } catch {
+                        store.toast('금각을 만들었습니다');
+                      }
+                    } catch (e) {
+                      store.toast(e instanceof Error ? e.message : '금각을 만들지 못했습니다');
+                    } finally {
+                      setRoomBusy(false);
+                    }
+                  }}
+                  className="mt-2 w-full rounded-lg bg-white/10 py-1.5 text-[12px] text-white/80 transition hover:bg-white/16 disabled:opacity-50"
+                >
+                  {roomBusy ? '금각을 준비하는 중…' : '나만의 금각 만들기'}
+                </button>
+                {roomLink && (
+                  <div className="mt-2 space-y-1.5" data-testid="room-link">
+                    <p className="break-all text-[10px] leading-relaxed text-amber-100/70">{roomLink}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-white/45">초대 키</span>
+                      <span className="rounded-md border border-amber-200/30 bg-black/30 px-2 py-0.5 font-mono text-[13px] tracking-[0.2em] text-amber-100">
+                        {roomKey}
+                      </span>
+                    </div>
+                    <p className="text-[10px] leading-relaxed text-white/40">
+                      링크에는 키가 들어가지 않습니다. 링크와 키를 따로 보내 주세요.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

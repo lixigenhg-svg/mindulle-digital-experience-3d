@@ -63,7 +63,7 @@ export default function DonationModal() {
           <h2 className="text-lg font-semibold text-white">디지털 라이트 이용권</h2>
           
         </div>
-        <p className="mb-4 text-xs text-white/60">이 공간은 가상 체험 공간입니다. 이용권은 결제일로부터 1개월간 유효하며, 풀소유는 매월 자동 갱신됩니다.</p>
+        <p className="mb-4 text-xs text-white/60">이 공간은 가상 체험 공간입니다. 이용권은 결제일로부터 1개월간 유효하며, 풀소유는 매월 자동 갱신됩니다. 사랑하는 이에게는 프라이빗 금각과 6자리 초대 키가 함께 열립니다.</p>
 
         <div className="flex flex-col gap-2.5">
           {DONATION_TIERS.map(t => (
@@ -103,6 +103,9 @@ export default function DonationModal() {
             <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
               입력하면 인증번호가 친구에게 발송되고, 결제자에게는 선물 완료 알림만 발송됩니다. 비워 두면 결제자 번호로 발송됩니다.
             </p>
+            <div className="mt-2 rounded-xl border border-amber-200/20 bg-amber-200/6 px-3 py-2 text-[11px] leading-relaxed text-amber-100/65">
+              선물받은 분은 인증번호로 프리미엄을 열고, 4D 설정 &gt; 프라이빗 금각에서 초대 키를 만들 수 있습니다.
+            </div>
           </div>
         )}
 

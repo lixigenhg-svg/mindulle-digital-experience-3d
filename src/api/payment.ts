@@ -20,8 +20,8 @@ export interface DonationTier {
 
 export const DONATION_TIERS: DonationTier[] = [
   { id: 'musoyu', ko: '무소유', zh: '', desc: '원하는 만큼 자유롭게 체험할 수 있어요', amount: 0 },
-  { id: 'pulsoyu', ko: '풀소유', zh: '', desc: '결제일로부터 1개월, 매월 자동 갱신', amount: 1000 },
-  { id: 'love', ko: '사랑하는 이에게', zh: '', desc: '친구에게 1개월 이용권을 선물합니다', amount: 10000 },
+  { id: 'pulsoyu', ko: '풀소유', zh: '', desc: '1개월 프리미엄 · 금빛 광배·연꽃 (프라이빗 금각 제외)', amount: 1000 },
+  { id: 'love', ko: '사랑하는 이에게', zh: '', desc: '1개월 프리미엄 + 프라이빗 금각·초대 키 + 장명등·다실', amount: 10000 },
 ];
 
 export interface DonationRequest {

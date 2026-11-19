@@ -175,11 +175,14 @@ interface LocalPlayerProps {
   color: string;
   machine: ActionMachine;
   onMove: (snap: MoveSnapshot) => void;
+  /** 私密金阁：独立出生点、独立边界、不使用大殿碰撞体 */
+  privateMode?: boolean;
+  spawn?: { x: number; z: number };
 }
 
 const keyState: Record<string, boolean> = {};
 
-export default function LocalPlayer({ name, color, machine, onMove }: LocalPlayerProps) {
+export default function LocalPlayer({ name, color, machine, onMove, privateMode = false, spawn }: LocalPlayerProps) {
   const gl = useThree(s => s.gl);
   const camera = useThree(s => s.camera) as THREE.PerspectiveCamera;
   const groupRef = useRef<THREE.Group>(null);
@@ -197,7 +200,9 @@ export default function LocalPlayer({ name, color, machine, onMove }: LocalPlaye
   const action = useSyncExternalStore(machine.subscribe, machine.getState);
 
   // 刷新后回到原来的位置，而不是又从山门外重新走进来
+  // 私密金阁不读取大殿的站位；进入时固定在自己的入口
   const savedPos = (() => {
+    if (privateMode) return null;
     try {
       const raw = localStorage.getItem('mindulle.pos');
       if (!raw) return null;
@@ -212,10 +217,15 @@ export default function LocalPlayer({ name, color, machine, onMove }: LocalPlaye
 
   const state = useRef({
     // 出生点：山门外，正对山门（多人时左右散开一点，避免叠在一起）
-    pos: new THREE.Vector3(savedPos ? savedPos.x! : (Math.random() - 0.5) * 2.4, 0, savedPos ? savedPos.z! : 60.5),
+    // 私密金阁：从自己的门内进入，不再走山门
+    pos: new THREE.Vector3(
+      savedPos ? savedPos.x! : privateMode ? (spawn?.x ?? 0) : (Math.random() - 0.5) * 2.4,
+      0,
+      savedPos ? savedPos.z! : privateMode ? (spawn?.z ?? 13.4) : 60.5,
+    ),
     target: null as THREE.Vector3 | null,
-    facing: savedPos?.facing ?? 0,
-    yaw: savedPos?.yaw ?? 0,   // 相机在身后（殿门外侧），镜头正对塑像
+    facing: savedPos?.facing ?? (privateMode ? 0 : 0),
+    yaw: savedPos?.yaw ?? (privateMode ? 0 : 0),   // 相机在身后（殿门外侧），镜头正对塑像
     pitch: savedPos?.pitch ?? (typeof innerWidth !== 'undefined' && innerWidth < 768 ? 0.30 : 0.28),
     dist: savedPos?.dist ?? (typeof innerWidth !== 'undefined' && innerWidth < 768 ? 5.4 : 5.0),
     anim: 'idle' as 'idle' | 'walk',
@@ -229,6 +239,20 @@ export default function LocalPlayer({ name, color, machine, onMove }: LocalPlaye
     fixSnap: false,
   });
 
+  /** 私密金阁：只在自己的 14×15m 房间里走；公共殿仍走原来的边界与碰撞体 */
+  const clampRoom = (p: THREE.Vector3) => {
+    if (privateMode) {
+      p.x = THREE.MathUtils.clamp(p.x, -6.55, 6.55);
+      p.z = THREE.MathUtils.clamp(p.z, 1.35, 14.55);
+      return p;
+    }
+    p.x = THREE.MathUtils.clamp(p.x, -BOUNDS, BOUNDS);
+    p.z = THREE.MathUtils.clamp(p.z, BOUNDS_Z_MIN, BOUNDS_Z_MAX);
+    resolveCollision(p);
+    p.x = THREE.MathUtils.clamp(p.x, -BOUNDS, BOUNDS);
+    p.z = THREE.MathUtils.clamp(p.z, BOUNDS_Z_MIN, BOUNDS_Z_MAX);
+    return p;
+  };
   /* ---------- 键盘 ---------- */
   // 供外部调用：让玩家自动走到某点（上香等场景使用）
   useEffect(() => {
@@ -351,12 +375,7 @@ export default function LocalPlayer({ name, color, machine, onMove }: LocalPlaye
       if (dragMoved <= 6 && pointers.size === 0) {
         const p = groundPoint(e.clientX, e.clientY);
         if (p) {
-          p.x = THREE.MathUtils.clamp(p.x, -BOUNDS, BOUNDS);
-          p.z = THREE.MathUtils.clamp(p.z, BOUNDS_Z_MIN, BOUNDS_Z_MAX);
-          // 点到障碍物（香案、柱子、树、石灯…）上时，落点先推到最近的空位
-          resolveCollision(p);
-          p.x = THREE.MathUtils.clamp(p.x, -BOUNDS, BOUNDS);
-          p.z = THREE.MathUtils.clamp(p.z, BOUNDS_Z_MIN, BOUNDS_Z_MAX);
+          clampRoom(p);
           state.current.target = p;
         }
       }
@@ -508,7 +527,7 @@ export default function LocalPlayer({ name, color, machine, onMove }: LocalPlaye
         }
         s.pos.x = THREE.MathUtils.clamp(s.pos.x, -BOUNDS, BOUNDS);
         s.pos.z = THREE.MathUtils.clamp(s.pos.z, BOUNDS_Z_MIN, BOUNDS_Z_MAX);
-        resolveCollision(s.pos);
+        clampRoom(s.pos);
       }
       const targetRot = Math.atan2(-move.x, -move.z);
       let diff = targetRot - s.facing;
@@ -531,15 +550,17 @@ export default function LocalPlayer({ name, color, machine, onMove }: LocalPlaye
     // 每秒记一次站位，刷新后能回到原处
     if (nowMs - lastSave.current > 1000) {
       lastSave.current = nowMs;
-      try {
-        localStorage.setItem('mindulle.pos', JSON.stringify({
-          x: s.pos.x, z: s.pos.z, facing: s.facing,
-          yaw: s.yaw, pitch: s.pitch, dist: s.dist,
-          // 坐着就把坐具类型记下来，刷新后恢复坐姿而不是站着
-          // 用 machine.state 判断（每帧都是最新值），props 里的 action 可能滞后
-          seat: (window as unknown as { __MD_SEAT__?: string | null }).__MD_SEAT__ ?? null,
-        }));
-      } catch { /* 隐私模式忽略 */ }
+      if (!privateMode) {
+        try {
+          localStorage.setItem('mindulle.pos', JSON.stringify({
+            x: s.pos.x, z: s.pos.z, facing: s.facing,
+            yaw: s.yaw, pitch: s.pitch, dist: s.dist,
+            // 坐着就把坐具类型记下来，刷新后恢复坐姿而不是站着
+            // 用 machine.state 判断（每帧都是最新值），props 里的 action 可能滞后
+            seat: (window as unknown as { __MD_SEAT__?: string | null }).__MD_SEAT__ ?? null,
+          }));
+        } catch { /* 隐私模式忽略 */ }
+      }
     }
     // 把自己的位置暴露出去，让别人也能判定相遇（各自本地算，不走服务端）
     (window as unknown as { __MD_SELF__?: { x: number; z: number } }).__MD_SELF__ = {
@@ -678,7 +699,7 @@ const contactShadowTex = (() => {
           RiggedAvatar({ color, action, anim: state.current.anim, bob: state.current.bob })
         )}
         <NameTag name={name} />
-              <PaidAura />
+        {!privateMode && <PaidAura />}
       </group>
     </>
   );

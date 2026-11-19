@@ -26,6 +26,8 @@ export interface NetHandlers {
   onPeerAction(id: string, action: string): void;
   onStatus(text: string | null): void;
   onRoomFull(): void;
+  /** 私密房密钥错误/链接失效：回到密钥门 */
+  onPrivateDenied?(msg: string): void;
 }
 
 const CLIENT_ID_KEY = 'mindulle_client_id';
@@ -51,7 +53,12 @@ export class Net {
   private manualClose = false;
   readonly clientId: string;
 
-  constructor(private room: RoomInfo, private identity: Identity, private handlers: NetHandlers) {
+  constructor(
+    private room: RoomInfo,
+    private identity: Identity,
+    private handlers: NetHandlers,
+    private privateKey = '',
+  ) {
     this.clientId = loadClientId();
   }
 
@@ -129,6 +136,7 @@ export class Net {
       clientId: this.clientId,
       name: this.identity.name,
       color: this.identity.color,
+      ...(this.privateKey ? { key: this.privateKey } : {}),
     });
   }
 
@@ -167,6 +175,11 @@ export class Net {
         break;
       case 'room_full':
         this.handleRoomFull();
+        break;
+      case 'private_locked':
+      case 'private_unknown':
+        this.manualClose = true;
+        this.handlers.onPrivateDenied?.(typeof msg.msg === 'string' ? msg.msg : '초대 키를 확인해 주세요.');
         break;
       case 'hall_limit':
         // 服务端殿号上限：把 instance 置 -1，随后 onRoomFull 里的 +1 正好回到 0 号殿

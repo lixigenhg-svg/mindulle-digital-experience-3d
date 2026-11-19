@@ -12,9 +12,11 @@ interface HudProps {
   onScreenshot: () => void;
 }
 
-function readRoom(): { roomId: string; room: string } {
+function readRoom(): { roomId: string; room: string; privateRoom: boolean } {
   const parts = store.hud.roomId.split(':');
-  return { roomId: store.hud.roomId, room: parts[1] ?? parts[0] ?? '01' };
+  const room = parts[1] ?? parts[0] ?? '01';
+  const queryRoom = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('room') || '' : '';
+  return { roomId: store.hud.roomId, room, privateRoom: room.startsWith('pri-') || queryRoom.startsWith('pri-') };
 }
 
 export default function Hud({ onToggleSound, onToggleListen, onExit, onScreenshot }: HudProps) {
@@ -23,7 +25,7 @@ export default function Hud({ onToggleSound, onToggleListen, onExit, onScreensho
   const muted = store.hud.muted;
   const chanting = store.hud.chanting;
   const beads = store.hud.beads;
-  const { roomId, room } = readRoom();
+  const { roomId, room, privateRoom } = readRoom();
 
   return (
     <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-col gap-2 px-3 pt-3">
@@ -54,16 +56,18 @@ export default function Hud({ onToggleSound, onToggleListen, onExit, onScreensho
           <button
             type="button"
             data-testid="server-button"
-            onClick={() => store.setServerOpen(true)}
+            onClick={privateRoom ? undefined : () => store.setServerOpen(true)}
             className="flex items-center gap-1.5 text-[13px] font-semibold text-white whitespace-nowrap transition hover:bg-white/10 rounded-full px-1.5 py-0.5"
-            aria-label="서버 선택"
+            aria-label={privateRoom ? '프라이빗 금각' : '서버 선택'}
           >
-            민들레 4D 체험관 {room}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="opacity-80">
-              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            {privateRoom ? '프라이빗 금각' : `민들레 4D 체험관 ${room}`}
+            {!privateRoom && (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="opacity-80">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
             <span className="ml-1 text-[13px] font-normal text-white/80">
-              {store.hud.count}/{store.hud.capacity}
+              {privateRoom ? `${store.hud.count}명 · 무제한` : `${store.hud.count}/${store.hud.capacity}`}
             </span>
             {roomId && <span className="sr-only">{roomId}</span>}
           </button>
@@ -130,17 +134,19 @@ export default function Hud({ onToggleSound, onToggleListen, onExit, onScreensho
 
       {/* 배경음 켜기 + 프리미엄 진입 */}
       <div className="pointer-events-auto flex justify-end gap-2">
-        <button
-          type="button"
-          data-testid="open-premium"
-          onClick={() => {
-            try { sessionStorage.setItem('mindulle.premiumFocus', '1'); } catch { /* ignore */ }
-            store.setSettingsOpen(true);
-          }}
-          className="rounded-full border border-amber-200/40 bg-amber-100/12 px-4 py-2 text-sm text-amber-100 backdrop-blur-md transition hover:bg-amber-100/20"
-        >
-          프리미엄
-        </button>
+        {!privateRoom && (
+          <button
+            type="button"
+            data-testid="open-premium"
+            onClick={() => {
+              try { sessionStorage.setItem('mindulle.premiumFocus', '1'); } catch { /* ignore */ }
+              store.setSettingsOpen(true);
+            }}
+            className="rounded-full border border-amber-200/40 bg-amber-100/12 px-4 py-2 text-sm text-amber-100 backdrop-blur-md transition hover:bg-amber-100/20"
+          >
+            프리미엄
+          </button>
+        )}
         <button
           type="button"
           onClick={onToggleListen}
@@ -153,13 +159,15 @@ export default function Hud({ onToggleSound, onToggleListen, onExit, onScreensho
         </button>
       </div>
 
-      <div className="hud-beads" data-testid="hud-beads">
-        <span className="hud-beads-label">108 구슬</span>
-        <strong>{beads}</strong>
-        <span className="hud-beads-total">/ 108</span>
-      </div>
+      {!privateRoom && (
+        <div className="hud-beads" data-testid="hud-beads">
+          <span className="hud-beads-label">108 구슬</span>
+          <strong>{beads}</strong>
+          <span className="hud-beads-total">/ 108</span>
+        </div>
+      )}
 
-      {status && (
+      {status && !privateRoom && (
         <div className="self-start rounded-full bg-black/35 px-3 py-1 text-xs text-white/85 backdrop-blur-sm">{status}</div>
       )}
     </div>

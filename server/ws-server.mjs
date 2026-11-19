@@ -16,6 +16,8 @@
  *   ALLOW_ORIGIN=https://mindulle.kr,https://3d.mindulle.kr
  */
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { WebSocketServer } from 'ws';
 
 const PORT = Number(process.env.PORT || 8090);
@@ -36,6 +38,87 @@ const COORD_MAX = 300;            // 场景范围外视为异常，直接丢弃
 
 const rooms = new Map();          // roomId -> Set<ws>
 const stat = { conns: 0, peak: 0, joins: 0, rejected: 0, dropped: 0 };
+
+/* ---------------- 私密房：服务端生成房号 + 6位密钥，进房必须校验 ----------------
+   · 私密房不受 CAPACITY 限制
+   · 房号/密钥写盘，服务器重启后仍可进入
+   · 30 天未使用自动过期（和 10,000 档 1 个月权益一致）
+   · 只有 invite-key 正确才允许 join；URL 只带房号，不把密钥放在链接里
+*/
+const PRIVATE_STORE_PATH = process.env.PRIVATE_STORE || path.join(process.cwd(), 'private-rooms.json');
+const PRIVATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const privateRooms = new Map(); // full roomId -> { key, room, region, owner, createdAt }
+
+function loadPrivateRooms() {
+  try {
+    if (!fs.existsSync(PRIVATE_STORE_PATH)) return;
+    const raw = JSON.parse(fs.readFileSync(PRIVATE_STORE_PATH, 'utf8'));
+    if (!Array.isArray(raw)) return;
+    const now = Date.now();
+    for (const it of raw) {
+      if (!it || typeof it.roomId !== 'string' || typeof it.key !== 'string') continue;
+      if (!Number.isFinite(Number(it.createdAt)) || now - Number(it.createdAt) > PRIVATE_TTL_MS) continue;
+      privateRooms.set(it.roomId, {
+        key: it.key,
+        room: String(it.room || ''),
+        region: String(it.region || 'apac'),
+        owner: String(it.owner || ''),
+        createdAt: Number(it.createdAt),
+      });
+    }
+  } catch { /* 文件损坏或没有权限时，只从内存开始，不阻塞服务 */ }
+}
+
+function savePrivateRooms() {
+  try {
+    const dir = path.dirname(PRIVATE_STORE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const list = [...privateRooms.entries()].map(([roomId, v]) => ({ roomId, ...v }));
+    fs.writeFileSync(PRIVATE_STORE_PATH, JSON.stringify(list, null, 2));
+  } catch { /* 持久化失败不阻塞进房 */ }
+}
+
+loadPrivateRooms();
+
+/** 私密房 6 位密钥；避免出现 000000 */
+function makePrivateKey() {
+  return String(100000 + Math.floor(Math.random() * 900000));
+}
+
+/** 4 位房号；与现有 pri-xxxx 约定一致 */
+function makePrivateCode() {
+  return `pri-${1000 + Math.floor(Math.random() * 9000)}`;
+}
+
+function handlePrivateCreate(ws, msg) {
+  if (ws.roomId) return;
+  const clientId = String(msg.clientId || '').slice(0, 40).replace(/[^A-Za-z0-9\-_:.]/g, '');
+  const region = String(msg.region || 'apac').replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 16) || 'apac';
+  if (!clientId) { stat.dropped++; ws.close(1008, 'bad create'); return; }
+
+  let code = makePrivateCode();
+  let roomId = `${region}:${code}:0`;
+  for (let i = 0; i < 12 && privateRooms.has(roomId); i++) {
+    code = makePrivateCode();
+    roomId = `${region}:${code}:0`;
+  }
+  const key = makePrivateKey();
+  privateRooms.set(roomId, { key, room: code, region, owner: clientId, createdAt: Date.now() });
+  savePrivateRooms();
+
+  try {
+    ws.send(JSON.stringify({
+      type: 'private_created',
+      private: true,
+      roomId,
+      room: code,
+      region,
+      key,
+    }));
+  } catch {}
+  // 创建连接不需要 join；客户端收到结果后自行关闭
+  try { ws.close(1000, 'private created'); } catch {}
+}
 
 /* ---------------- 工具 ---------------- */
 
@@ -125,10 +208,13 @@ const server = http.createServer((req, res) => {
       capacity: CAPACITY,
       maxHalls: MAX_HALLS,
       totalSeats: CAPACITY * (MAX_HALLS + 1),
+      privateRooms: privateRooms.size,
       tickMs: TICK_MS,
       rssMB: Math.round(mem.rss / 1048576),
       heapMB: Math.round(mem.heapUsed / 1048576),
-      roomDetail: [...rooms.entries()].map(([id, set]) => ({ roomId: id, count: set.size })),
+      roomDetail: [...rooms.entries()]
+        .filter(([id]) => !id.includes(':pri-'))
+        .map(([id, set]) => ({ roomId: id, count: set.size })),
     }, null, 2));
     return;
   }
@@ -179,6 +265,10 @@ wss.on('connection', (ws, req) => {
         clearTimeout(joinTimer);
         handleJoin(ws, msg);
         break;
+      case 'private_create':
+        clearTimeout(joinTimer);
+        handlePrivateCreate(ws, msg);
+        break;
       case 'move':
         if (!limitOk(ws)) return;
         handleMove(ws, msg);
@@ -216,9 +306,37 @@ function handleJoin(ws, msg) {
   const clientId = String(msg.clientId || '').slice(0, 40).replace(/[^A-Za-z0-9\-_:.]/g, '');
   if (!roomId || !clientId) { stat.dropped++; ws.close(1008, 'bad join'); return; }
 
+  // 私密房：必须带正确 6 位密钥；房号本身只是入口，不是钥匙
+  const privateRoom = privateRooms.get(roomId);
+  const segs = roomId.split(':');
+  const isPrivate = String(segs[1] || '').startsWith('pri-');
+  if (isPrivate) {
+    if (!privateRoom) {
+      try { ws.send(JSON.stringify({ type: 'private_unknown', msg: '초대 링크가 유효하지 않습니다.' })); } catch {}
+      stat.dropped++;
+      ws.close(1008, 'private unknown');
+      return;
+    }
+    if (Date.now() - privateRoom.createdAt > PRIVATE_TTL_MS) {
+      privateRooms.delete(roomId);
+      savePrivateRooms();
+      try { ws.send(JSON.stringify({ type: 'private_unknown', msg: '초대 링크가 만료되었습니다.' })); } catch {}
+      stat.dropped++;
+      ws.close(1008, 'private expired');
+      return;
+    }
+    const key = String(msg.key || '').replace(/[^0-9]/g, '');
+    if (key !== privateRoom.key) {
+      try { ws.send(JSON.stringify({ type: 'private_locked', msg: '초대 키가 올바르지 않습니다.' })); } catch {}
+      stat.dropped++;
+      ws.close(1008, 'private locked');
+      return;
+    }
+  }
+
   // 殿号上限：超过 MAX_HALLS 的殿不收，客户端收到 hall_limit 后回到 0 号殿
-  const seg  = roomId.split(':');
-  const inst = Number(seg[seg.length - 1]);
+  // 私密房固定 0 号殿，不参与自动分殿
+  const inst = Number(segs[segs.length - 1]);
   if (!Number.isFinite(inst) || inst < 0 || inst > MAX_HALLS) {
     try { ws.send(JSON.stringify({ type: 'hall_limit', max: MAX_HALLS })); } catch {}
     stat.dropped++;
@@ -237,7 +355,8 @@ function handleJoin(ws, msg) {
     }
   }
 
-  if (set.size >= CAPACITY) {
+  // 私密房不限人数；公共殿仍按 CAPACITY 满员换殿
+  if (!isPrivate && set.size >= CAPACITY) {
     // 满员 → 客户端收到 room_full 后 instance+1 自动去下一殿
     try { ws.send('{"type":"room_full"}'); } catch {}
     stat.dropped++;
@@ -259,7 +378,8 @@ function handleJoin(ws, msg) {
       type: 'joined',
       selfId: clientId,
       roomId,
-      capacity: CAPACITY,
+      private: isPrivate,
+      capacity: isPrivate ? 0 : CAPACITY,
       maxHalls: MAX_HALLS,
       count: set.size,
       peers: peersOf(set, ws),
@@ -304,6 +424,16 @@ setInterval(() => {
     }
   }
 }, TICK_MS);
+
+/* 私密房过期清理：30 天未使用自动失效，避免密钥表无限增长 */
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  for (const [roomId, room] of privateRooms) {
+    if (now - room.createdAt > PRIVATE_TTL_MS) { privateRooms.delete(roomId); changed = true; }
+  }
+  if (changed) savePrivateRooms();
+}, 60 * 60 * 1000);
 
 const ACTIONS = new Set([
   'bow_start', 'bow_stop', 'pray', 'beads_start', 'beads_stop', 'woodfish',

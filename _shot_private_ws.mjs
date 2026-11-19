@@ -1,0 +1,34 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ executablePath: '/opt/vm/preinstall/ms-playwright/chromium-1169/chrome-linux/chrome' });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const now = Date.now();
+await page.addInitScript(({now}) => {
+  localStorage.setItem('mindulle.entered','1');
+  localStorage.setItem('mindulle.pass', JSON.stringify({ code:'123456', verified:true, unlockedAt: now, premiumUntil: now + 30*86400000, privatePass:true, aura:'gold', lotus:true, nightUntil:0 }));
+}, {now});
+await page.goto('http://127.0.0.1:5173/', { waitUntil:'load' });
+await page.waitForTimeout(1200);
+await page.click('[data-testid="settings-button"]');
+await page.waitForTimeout(300);
+await page.locator('[data-testid="make-room"]').scrollIntoViewIfNeeded();
+await page.waitForTimeout(200);
+await page.evaluate(() => document.querySelector('[data-testid="make-room"]').click());
+await page.waitForTimeout(3000);
+await page.screenshot({ path: '/tmp/private-after-create.png' });
+console.log('TEXT', (await page.locator('body').innerText()).slice(-1600));
+console.log('ROOMLINK', await page.locator('[data-testid="room-link"]').count());
+if (await page.locator('[data-testid="room-link"]').count() === 0) { await browser.close(); process.exit(0); }
+const link = (await page.locator('[data-testid="room-link"] p').first().textContent()).trim();
+const key = (await page.locator('[data-testid="room-link"] span.font-mono').textContent()).trim();
+console.log('MADE', link, key);
+await page.screenshot({ path: '/tmp/private-made.png' });
+await page.goto(link, { waitUntil:'load' });
+await page.waitForTimeout(500);
+await page.fill('input[placeholder="000000"]', key);
+await page.click('text=금각 열기');
+await page.waitForTimeout(5000);
+console.log('URL', page.url());
+console.log('PRIVATE_TEXT', (await page.locator('body').innerText()).slice(0,500));
+await page.screenshot({ path: '/tmp/private-ws-room.png', timeout: 60000 });
+console.log('ENTERED', await page.locator('text=프라이빗 금각').count());
+await browser.close();
