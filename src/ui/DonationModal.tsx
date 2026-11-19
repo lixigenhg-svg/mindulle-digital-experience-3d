@@ -18,6 +18,7 @@ export default function DonationModal() {
   useSyncExternalStore(store.subscribe, store.getVersion);
   const open = store.hud.donationOpen;
   const [tierId, setTierId] = useState(DONATION_TIERS[0].id);
+  const [recipient, setRecipient] = useState('');
   const [busy, setBusy] = useState(false);
 
   if (!open) return null;
@@ -25,9 +26,25 @@ export default function DonationModal() {
   const submit = async () => {
     if (busy) return;
     const tier = DONATION_TIERS.find(t => t.id === tierId) ?? DONATION_TIERS[0];
+    if (tier.amount <= 0) {
+      store.toast('무소유는 무료 체험입니다. 결제 없이 둘러보세요.');
+      return;
+    }
+    const rphone = recipient.replace(/[^0-9]/g, '');
+    if (tier.id === 'love' && rphone !== '' && (rphone.length < 10 || rphone.length > 11)) {
+      store.toast('받는 분 휴대폰 번호를 정확히 입력해 주세요.');
+      return;
+    }
     setBusy(true);
     try {
-      const result = await createDonation({ tierId: tier.id, amount: tier.amount });
+      const result = await createDonation({
+        tierId: tier.id,
+        amount: tier.amount,
+        cycle: tier.id === 'pulsoyu' ? 'monthly' : 'once',
+        gift: tier.id === 'love',
+        rphone,
+        premium: true
+      });
       if (result.status === 'ok' && result.paymentUrl) {
         // 接入网关后：跳转支付页
         location.href = result.paymentUrl;
@@ -46,7 +63,7 @@ export default function DonationModal() {
           <h2 className="text-lg font-semibold text-white">디지털 라이트 이용권</h2>
           
         </div>
-        <p className="mb-4 text-xs text-white/60">이 공간은 가상 체험 공간입니다. 이용권은 결제일로부터 7일간 유효합니다.</p>
+        <p className="mb-4 text-xs text-white/60">이 공간은 가상 체험 공간입니다. 이용권은 결제일로부터 1개월간 유효하며, 풀소유는 매월 자동 갱신됩니다.</p>
 
         <div className="flex flex-col gap-2.5">
           {DONATION_TIERS.map(t => (
@@ -67,6 +84,27 @@ export default function DonationModal() {
             </button>
           ))}
         </div>
+
+        {tierId === 'love' && (
+          <div className="mt-4">
+            <label className="mb-1 block text-[11.5px] text-white/60" htmlFor="gift-phone">
+              받는 분 휴대폰 번호 (선택)
+            </label>
+            <input
+              id="gift-phone"
+              data-testid="gift-phone"
+              type="tel"
+              inputMode="numeric"
+              value={recipient}
+              onChange={e => setRecipient(e.target.value)}
+              placeholder="010-0000-0000"
+              className="w-full rounded-xl border border-white/15 bg-white/8 px-3 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-amber-200/60 focus:outline-none"
+            />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              입력하면 인증번호가 친구에게 발송되고, 결제자에게는 선물 완료 알림만 발송됩니다. 비워 두면 결제자 번호로 발송됩니다.
+            </p>
+          </div>
+        )}
 
         {/* 供养金用途说明 */}
         <div className="mt-4 rounded-2xl border border-white/15 bg-white/6 px-4 py-3 text-left">

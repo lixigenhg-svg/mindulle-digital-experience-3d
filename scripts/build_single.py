@@ -92,7 +92,7 @@ function key(u){ if(typeof u!=='string') return ''; var i=u.indexOf('assets/'); 
   var s=u.slice(i); var q=s.search(/[?#]/); if(q>=0) s=s.slice(0,q);
   if(MAP[s]) return s; var n=s.split('/').pop(); if(!n) return '';
   for(var kk in MAP){ if(kk.split('/').pop()===n) return kk; } return s; }
-function isApi(u){ return typeof u==='string' && /(^|\\/)care\\/[a-z-]+\\.php/.test(u); }
+function isApi(u){ return typeof u==='string' && /(^|\\/)care\\/[a-z-]+\\.php/.test(u) && !/premium-code\\.php/.test(u); }
 var _f=window.fetch&&window.fetch.bind(window);
 if(_f){ window.fetch=function(a,b){ try{ var u=(typeof a==='string')?a:(a&&a.url)||'';
   if(isApi(u)){ var _b='[]'; if(/lamp-list\\.php/.test(u)) _b=__LAMPS__;

@@ -31,7 +31,7 @@ import { makeIdentity } from './names';
 import { bumpInstance, parseRoom, MOVE_SEND_INTERVAL } from './config';
 import { store } from './store';
 import { haptic } from './immersive';
-import { expireNightPass } from './paid';
+import { expireNightPass, expirePremium, refreshPremium } from './paid';
 
 const IS_MOBILE =
   typeof matchMedia !== 'undefined' && (matchMedia('(pointer:coarse)').matches || innerWidth < 768);
@@ -57,9 +57,19 @@ function StatsBridge({
   glRef.current = gl;
   // 프리미엄 야간 이용권：到期自动收回夜间亮度（每 30 秒检查一次）
   useEffect(() => {
-    const id = window.setInterval(() => expireNightPass(), 30000);
+    const id = window.setInterval(() => {
+      expireNightPass();
+      expirePremium();
+    }, 30000);
     expireNightPass();
-    return () => window.clearInterval(id);
+    expirePremium();
+    // 打开时查一次订阅；之后每 6 小时刷新，月度续费自动延长
+    void refreshPremium();
+    const sub = window.setInterval(() => void refreshPremium(), 30 * 60 * 1000);
+    return () => {
+      window.clearInterval(id);
+      window.clearInterval(sub);
+    };
   }, []);
 
   useEffect(() => {

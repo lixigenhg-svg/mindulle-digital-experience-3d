@@ -357,7 +357,7 @@ export default function SettingsModal({ engine }: { engine: AudioEngine | null }
             <div className="flex items-baseline justify-between">
               <span className="text-[13px] text-white/85">체험 코드</span>
               <span className="text-[11px] text-white/45">
-                {isUnlocked(paid) ? (paid.verified ? '확인됨' : '등록 대기') : '6자리'}
+                {isUnlocked(paid) ? '확인됨' : '6자리'}
               </span>
             </div>
             {isUnlocked(paid) ? (
@@ -395,6 +395,11 @@ export default function SettingsModal({ engine }: { engine: AudioEngine | null }
                   {codeBusy ? '확인 중…' : '등록'}
                 </button>
               </div>
+            )}
+            {!isUnlocked(paid) && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-white/40">
+                결제 후 문자로 받은 6자리 코드를 입력해 주세요.
+              </p>
             )}
           </div>
 

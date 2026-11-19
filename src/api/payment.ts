@@ -20,14 +20,20 @@ export interface DonationTier {
 
 export const DONATION_TIERS: DonationTier[] = [
   { id: 'musoyu', ko: '무소유', zh: '', desc: '원하는 만큼 자유롭게 체험할 수 있어요', amount: 0 },
-  { id: 'pulsoyu', ko: '풀소유', zh: '', desc: '이용 후 7일간 이 공간에 이름이 표시됩니다', amount: 1000 },
-  { id: 'love', ko: '사랑하는 이에게', zh: '', desc: '소중한 사람에게 마음을 전하는 체험', amount: 10000 },
+  { id: 'pulsoyu', ko: '풀소유', zh: '', desc: '결제일로부터 1개월, 매월 자동 갱신', amount: 1000 },
+  { id: 'love', ko: '사랑하는 이에게', zh: '', desc: '친구에게 1개월 이용권을 선물합니다', amount: 10000 },
 ];
 
 export interface DonationRequest {
   tierId: string;
   amount: number;
   message?: string;
+  /** monthly = 1개월 자동 갱신, once = 1회 1개월 */
+  cycle?: 'monthly' | 'once';
+  gift?: boolean;
+  /** 받는 분 휴대폰(선물용, 선택) */
+  rphone?: string;
+  premium?: boolean;
 }
 
 export interface DonationResult {
@@ -50,10 +56,15 @@ export async function createDonation(req: DonationRequest): Promise<DonationResu
   // 未另建收单网关时，统一走 민들레 안심堂 供养支付页（已接通 Toss 绑卡+订阅）
   if (!GATEWAY) {
     const base = 'https://mindulle.kr/care/donate.php';
-    const q = req.amount > 0 ? `?amount=${req.amount}` : '';
+    const p = new URLSearchParams();
+    p.set('amount', String(req.amount));
+    if (req.cycle === 'monthly') p.set('cycle', 'monthly');
+    if (req.premium) p.set('premium', '1');
+    if (req.gift) p.set('gift', '1');
+    if (req.rphone) p.set('rphone', req.rphone.replace(/[^0-9]/g, ''));
     return {
       status: 'ok',
-      paymentUrl: `${base}${q}`,
+      paymentUrl: `${base}?${p.toString()}`,
       message: '이용권 결제 페이지로 이동합니다',
     };
   }
