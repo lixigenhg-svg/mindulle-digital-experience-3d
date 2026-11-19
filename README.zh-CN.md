@@ -116,6 +116,7 @@ VITE_WS_URL=ws://localhost:8080 npm run dev     # 前端连接
 - 单殿容量 **100 人**。满员会自动开下一殿（2 号、3 号…），人走空后该殿自动关闭，无需额外配置。
 - 服务端环境变量：`PORT`（默认 8090）、`CAPACITY`（单殿容量，默认 100）、`MAX_HALLS`（可自动开启的殿数，默认 100）、`ALLOW_ORIGIN`（允许的域名）。
 - 位置每 200ms 合并上报一次，一殿 100 人同时走动也不会把带宽打满。
+- 运行状态看 `https://3d.mindulle.kr/monitor.html`，它读取同服务器的 `/health`（对外为 `/ws-health`），显示在线人数、殿数、内存。
 
 体验券支付会跳转到 `care/donate.php`，支付与个人信息处理都在该服务器完成。
 
