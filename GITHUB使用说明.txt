@@ -29,7 +29,6 @@
      MAX_HALLS=100        最多自动开到第几殿，默认 100
      ALLOW_ORIGIN=https://mindulle.kr,https://3d.mindulle.kr
    满员会自动开下一殿、人走空自动关殿，前端不需要额外配置。
-   运行状态页：https://3d.mindulle.kr/monitor.html （随 dist 一起发布）。
    位置数据每 200ms 合并一包发送，一殿 100 人走动时下行约 1.5MB/s，旧写法约 10MB/s。
 
 6. 目录说明
