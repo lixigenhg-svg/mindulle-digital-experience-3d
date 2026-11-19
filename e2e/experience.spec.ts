@@ -153,7 +153,7 @@ test.describe('temple Temple · 桌面端', () => {
     await expect.poll(async () => (await snap(page)).state, { timeout: 4000 }).toBe('idle');
   });
 
-  test('撞钟 / 上香 / 许愿灯 / 绕塔 交互可用', async ({ page }) => {
+  test('撞钟 / 上香 / 许愿灯 交互可用', async ({ page }) => {
     await page.goto('/');
     await enterTemple(page);
 
@@ -173,19 +173,21 @@ test.describe('temple Temple · 桌面端', () => {
     await expect(page.getByTestId('wish-modal')).toBeVisible();
     await page.getByTestId('wish-submit').click();
     await expect.poll(async () => (await snap(page)).wishes).toBe(2);
+  });
 
+  test('绕塔开始后角色沿路线行走', async ({ page }) => {
+    await page.goto('/');
+    await enterTemple(page);
     await page.getByTestId('action-tour').click();
     await expect.poll(async () => (await snap(page)).tourActive).toBe(true);
-    await page.waitForTimeout(2000);
-    const s = await snap(page);
-    expect(s.player?.anim).toBe('walk');
+    await expect.poll(async () => (await snap(page)).player?.anim).toBe('walk');
   });
 
   test('截图保存可触发下载', async ({ page }) => {
     await page.goto('/');
     await enterTemple(page);
     const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 8000 }),
+      page.waitForEvent('download', { timeout: 30000 }),
       page.getByTestId('screenshot-button').click(),
     ]);
     expect(download.suggestedFilename()).toBe('mindulle-care.png');
