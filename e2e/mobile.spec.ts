@@ -1,5 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  // The default spawn is at the outer gate. Restore an in-hall position
+  // so these cases can exercise hall-only actions through the UI.
+  await page.addInitScript(() => {
+    if (location.hostname === '127.0.0.1') {
+      localStorage.setItem('mindulle.pos', JSON.stringify({ x: 0, z: 4 }));
+    }
+  });
+});
+
 type Snapshot = {
   entered: boolean;
   state: string;
@@ -8,11 +18,11 @@ type Snapshot = {
 };
 
 async function enterTemple(page: Page) {
-  await page.waitForFunction(() => Boolean((window as unknown as { __TEMPLE__?: unknown }).__TEMPLE__));
+  await page.waitForFunction(() => Boolean((window as unknown as { __MD__?: unknown }).__MD__));
   await page.getByTestId('enter-button').tap();
   await expect(page.getByTestId('intro')).toHaveCount(0);
   await page.waitForFunction(() => {
-    const s = (window as unknown as { __TEMPLE__: { getSnapshot: () => Snapshot } }).__TEMPLE__.getSnapshot();
+    const s = (window as unknown as { __MD__: { getSnapshot: () => Snapshot } }).__MD__.getSnapshot();
     return s.scene.ready && s.scene.canvas.width > 0;
   });
 }
@@ -37,7 +47,7 @@ test.describe('temple Temple · 移动端', () => {
     await expect(page.getByTestId('action-pray')).toBeVisible();
     await page.getByTestId('action-pray').tap();
     await page.waitForFunction(() => {
-      const s = (window as unknown as { __TEMPLE__: { getSnapshot: () => Snapshot } }).__TEMPLE__.getSnapshot();
+      const s = (window as unknown as { __MD__: { getSnapshot: () => Snapshot } }).__MD__.getSnapshot();
       return s.state === 'praying';
     });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
@@ -61,17 +71,17 @@ test('移动端轻触地面可以移动童角色', async ({ page }) => {
   await page.goto('/');
   await enterTemple(page);
   await page.waitForFunction(() => {
-    const s = (window as unknown as { __TEMPLE__: { getSnapshot: () => Snapshot } }).__TEMPLE__.getSnapshot();
+    const s = (window as unknown as { __MD__: { getSnapshot: () => Snapshot } }).__MD__.getSnapshot();
     return Boolean((s as unknown as { player?: unknown }).player);
   });
   const before = await page.evaluate(() => {
-    const s = (window as unknown as { __TEMPLE__: { getSnapshot: () => { player: { x: number; z: number } } } }).__TEMPLE__.getSnapshot();
+    const s = (window as unknown as { __MD__: { getSnapshot: () => { player: { x: number; z: number } } } }).__MD__.getSnapshot();
     return s.player;
   });
   await page.locator('canvas').tap({ position: { x: 70, y: 520 } });
   await page.waitForTimeout(2200);
   const after = await page.evaluate(() => {
-    const s = (window as unknown as { __TEMPLE__: { getSnapshot: () => { player: { x: number; z: number } } } }).__TEMPLE__.getSnapshot();
+    const s = (window as unknown as { __MD__: { getSnapshot: () => { player: { x: number; z: number } } } }).__MD__.getSnapshot();
     return s.player;
   });
   expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeGreaterThan(0.1);

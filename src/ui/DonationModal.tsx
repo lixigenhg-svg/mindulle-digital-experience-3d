@@ -46,8 +46,26 @@ export default function DonationModal() {
         premium: true
       });
       if (result.status === 'ok' && result.paymentUrl) {
-        // 接入网关后：跳转支付页
-        location.href = result.paymentUrl;
+        if (result.paymentFields) {
+          const form = document.createElement('form');
+          form.method = 'POST';
+          form.action = result.paymentUrl;
+          for (const [name, value] of Object.entries(result.paymentFields)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.append(input);
+          }
+          document.body.append(form);
+          try {
+            form.submit();
+          } finally {
+            form.remove();
+          }
+        } else {
+          location.assign(result.paymentUrl);
+        }
       } else {
         store.toast(result.message);
       }

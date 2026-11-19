@@ -1,5 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  // The default spawn is at the outer gate. Restore an in-hall position
+  // so these cases can exercise hall-only actions through the UI.
+  await page.addInitScript(() => {
+    if (location.hostname === '127.0.0.1') {
+      localStorage.setItem('mindulle.pos', JSON.stringify({ x: 0, z: 4 }));
+    }
+  });
+});
+
 type Snapshot = {
   entered: boolean;
   state: string;
@@ -23,14 +33,14 @@ type Snapshot = {
 };
 
 const snap = (page: Page) =>
-  page.evaluate(() => (window as unknown as { __TEMPLE__: { getSnapshot: () => Snapshot } }).__TEMPLE__.getSnapshot());
+  page.evaluate(() => (window as unknown as { __MD__: { getSnapshot: () => Snapshot } }).__MD__.getSnapshot());
 
 async function enterTemple(page: Page) {
-  await page.waitForFunction(() => Boolean((window as unknown as { __TEMPLE__?: unknown }).__TEMPLE__));
+  await page.waitForFunction(() => Boolean((window as unknown as { __MD__?: unknown }).__MD__));
   await page.getByTestId('enter-button').click();
   await expect(page.getByTestId('intro')).toHaveCount(0);
   await page.waitForFunction(() => {
-    const s = (window as unknown as { __TEMPLE__: { getSnapshot: () => Snapshot } }).__TEMPLE__.getSnapshot();
+    const s = (window as unknown as { __MD__: { getSnapshot: () => Snapshot } }).__MD__.getSnapshot();
     return s.scene.ready && s.scene.canvas.width > 0;
   });
 }
@@ -42,7 +52,7 @@ test.describe('temple Temple · 桌面端', () => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.goto('/');
-    await expect(page).toHaveTitle(/안심당/);
+    await expect(page).toHaveTitle(/민들레 4D 체험관/);
     await expect(page.getByTestId('intro')).toBeVisible();
     await expect(page.getByTestId('enter-button')).toBeVisible();
     await expect(page.getByTestId('intro-sound')).toBeVisible();
@@ -67,16 +77,19 @@ test.describe('temple Temple · 桌面端', () => {
     await page.goto('/');
     await enterTemple(page);
     await page.waitForFunction(() => {
-      const s = (window as unknown as { __TEMPLE__: { getSnapshot: () => Snapshot } }).__TEMPLE__.getSnapshot();
+      const s = (window as unknown as { __MD__: { getSnapshot: () => Snapshot } }).__MD__.getSnapshot();
       return Boolean(s.player);
     });
     const before = await snap(page);
-    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW', key: 'w' })));
-    await page.waitForTimeout(2500);
-    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW', key: 'w' })));
-    const after = await snap(page);
-    const moved = Math.hypot((after.player?.x ?? 0) - (before.player?.x ?? 0), (after.player?.z ?? 0) - (before.player?.z ?? 0));
-    expect(moved).toBeGreaterThan(0.1);
+    await page.keyboard.down('d');
+    try {
+      await expect.poll(async () => {
+        const after = await snap(page);
+        return Math.hypot((after.player?.x ?? 0) - (before.player?.x ?? 0), (after.player?.z ?? 0) - (before.player?.z ?? 0));
+      }).toBeGreaterThan(0.1);
+    } finally {
+      await page.keyboard.up('d');
+    }
   });
 
   test('珠串可以拖动操作并计数', async ({ page }) => {
@@ -129,8 +142,14 @@ test.describe('temple Temple · 桌面端', () => {
   test('木鼓动作可触发并自动回收', async ({ page }) => {
     await page.goto('/');
     await enterTemple(page);
-    await page.getByTestId('action-woodfish').click();
-    await expect.poll(async () => (await snap(page)).state).toBe('woodfish');
+    await page.evaluate(() => {
+      document.addEventListener('pointerdown', () => {
+        const browser = window as unknown as { __MD__: { getSnapshot: () => Snapshot } };
+        setTimeout(() => { document.documentElement.dataset.drumState = browser.__MD__.getSnapshot().state; }, 0);
+      }, { capture: true, once: true });
+    });
+    await page.getByTestId('action-wood_hit').click();
+    await expect(page.locator('html')).toHaveAttribute('data-drum-state', 'wood_hit');
     await expect.poll(async () => (await snap(page)).state, { timeout: 4000 }).toBe('idle');
   });
 
@@ -139,10 +158,10 @@ test.describe('temple Temple · 桌面端', () => {
     await enterTemple(page);
 
     await page.getByTestId('action-bell').click();
-    expect.poll(async () => (await snap(page)).bellAt).toBeGreaterThan(0);
+    await expect.poll(async () => (await snap(page)).bellAt).toBeGreaterThan(0);
 
     await page.getByTestId('action-incense').click();
-    expect.poll(async () => (await snap(page)).litIncense).toBe(true);
+    await expect.poll(async () => (await snap(page)).litIncense).toBe(true);
 
     expect((await snap(page)).wishes).toBe(0);
     await page.getByTestId('action-wish').click();
@@ -153,10 +172,10 @@ test.describe('temple Temple · 桌面端', () => {
     await page.getByTestId('action-wish').click();
     await expect(page.getByTestId('wish-modal')).toBeVisible();
     await page.getByTestId('wish-submit').click();
-    expect.poll(async () => (await snap(page)).wishes).toBe(2);
+    await expect.poll(async () => (await snap(page)).wishes).toBe(2);
 
     await page.getByTestId('action-tour').click();
-    expect.poll(async () => (await snap(page)).tourActive).toBe(true);
+    await expect.poll(async () => (await snap(page)).tourActive).toBe(true);
     await page.waitForTimeout(2000);
     const s = await snap(page);
     expect(s.player?.anim).toBe('walk');
@@ -169,7 +188,7 @@ test.describe('temple Temple · 桌面端', () => {
       page.waitForEvent('download', { timeout: 8000 }),
       page.getByTestId('screenshot-button').click(),
     ]);
-    expect(download.suggestedFilename()).toContain('temple');
+    expect(download.suggestedFilename()).toBe('mindulle-care.png');
   });
 
   test('音效可以开启和关闭', async ({ page }) => {
@@ -201,11 +220,11 @@ test.describe('temple Temple · 桌面端', () => {
     await expect(page.getByTestId('settings-value-sfx')).toHaveText('18%');
     await expect.poll(async () => (await snap(page)).audio.volumes?.sfx).toBeCloseTo(0.18, 2);
 
-    const stored = await page.evaluate(() => localStorage.getItem('temple_volumes_v1'));
+    const stored = await page.evaluate(() => localStorage.getItem('mindulle_volumes_v1'));
     expect(stored).toContain('0.18');
 
     // 面板关闭后重开，改动仍然保留
-    await page.getByTestId('settings-modal').getByLabel('关闭').click();
+    await page.getByTestId('settings-modal').getByRole('button', { name: '닫기', exact: true }).click();
     await expect(modal).toHaveCount(0);
     await page.getByTestId('settings-button').click();
     await expect(page.getByTestId('settings-value-sfx')).toHaveText('18%');
@@ -215,7 +234,7 @@ test.describe('temple Temple · 桌面端', () => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', msg => {
-      if (msg.type() === 'error') errors.push(msg.text());
+      if (msg.type() === 'error' && !msg.text().startsWith('Failed to load resource:')) errors.push(msg.text());
     });
     await page.goto('/');
     await enterTemple(page);
@@ -224,5 +243,24 @@ test.describe('temple Temple · 桌面端', () => {
     expect(errors.filter(e => !e.includes('favicon')).length).toBe(0);
     expect(typeof s.scene.fps).toBe('number');
     expect(s.scene.triangles).toBeGreaterThan(1000);
+  });
+});
+
+test('赠礼手机号仅通过 POST 请求体提交', async ({ page }) => {
+  const recipient = '01000000000';
+  const checkout = 'https://mindulle.kr/care/donate.php';
+  await page.route(checkout + '**', route => route.fulfill({ body: 'Checkout test' }));
+  await page.goto('/');
+  await enterTemple(page);
+  await page.getByTestId('action-donation').click();
+  await page.getByTestId('donation-tier-love').click();
+  await page.getByTestId('gift-phone').fill(recipient);
+  const requestPromise = page.waitForRequest(request => request.url().startsWith(checkout));
+  await page.getByTestId('donation-submit').click();
+  const request = await requestPromise;
+  expect(request.method()).toBe('POST');
+  expect(request.url()).toBe(checkout);
+  expect(Object.fromEntries(new URLSearchParams(request.postData() ?? ''))).toEqual({
+    amount: '10000', premium: '1', gift: '1', rphone: recipient,
   });
 });

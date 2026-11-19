@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const PORT = 28173;
+const PORT = Number(process.env.PLAYWRIGHT_PORT ?? 28173);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
@@ -10,13 +10,13 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [['list'], ['html', { outputFolder: 'docs/playwright-report', open: 'never' }], ['json', { outputFile: 'docs/playwright-results.json' }]],
-  outputDir: 'test-results',
+  reporter: [['list'], ['html', { outputFolder: 'test-results/html', open: 'never' }], ['json', { outputFile: 'test-results/playwright-results.json' }]],
+  outputDir: 'test-results/artifacts',
   use: {
     baseURL: BASE_URL,
     headless: true,
     launchOptions: {
-      executablePath: '/usr/local/bin/chromium',
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader']
     },
     screenshot: 'only-on-failure',
@@ -26,7 +26,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      testMatch: /temple\.spec\.ts/,
+      testMatch: /experience\.spec\.ts/,
       use: { viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false }
     },
     {
@@ -36,9 +36,9 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: `VITE_WS_URL=off npm run dev -- --port ${PORT} --strictPort`,
+    command: `VITE_WS_URL=off VITE_DEMO=1 VITE_API_BASE= VITE_PAYMENT_GATEWAY= npm run dev -- --port ${PORT} --strictPort`,
     url: BASE_URL,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 120_000
   }
 });
