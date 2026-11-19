@@ -57,7 +57,7 @@ export default function DonationModal() {
   };
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm">
+    <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm">
       <div className="w-full max-w-sm rounded-3xl bg-[#2b2118] p-5 shadow-2xl">
         <div className="mb-1 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-white">디지털 라이트 이용권</h2>
@@ -98,7 +98,7 @@ export default function DonationModal() {
               value={recipient}
               onChange={e => setRecipient(e.target.value)}
               placeholder="010-0000-0000"
-              className="w-full rounded-xl border border-white/15 bg-white/8 px-3 py-2.5 text-sm text-white placeholder:text-white/35 focus:border-amber-200/60 focus:outline-none"
+              className="pointer-events-auto w-full rounded-xl border border-white/20 bg-[#17120e] px-3 py-2.5 text-sm text-white caret-white placeholder:text-white/40 focus:border-amber-200/60 focus:outline-none"
             />
             <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
               입력하면 인증번호가 친구에게 발송되고, 결제자에게는 선물 완료 알림만 발송됩니다. 비워 두면 결제자 번호로 발송됩니다.
