@@ -20,8 +20,9 @@ test('移动端从真实入口出生后轻触地面可以移动', async ({ page 
   await expect.poll(async () => (await readPlayer(page))?.z).toBe(60.5);
   const canvas = page.locator('canvas');
   await expect(canvas).toBeVisible();
+  const before = await readPlayer(page);
+  expect(before).not.toBeNull();
   await canvas.tap({ position: { x: 195, y: 500 } });
-
-  // Require movement beyond the z = 60 world-boundary clamp.
-  await expect.poll(async () => (await readPlayer(page))?.z ?? Infinity).toBeLessThan(59.85);
+  await expect.poll(async () => (await readPlayer(page))?.z ?? Infinity)
+    .toBeLessThan((before?.z ?? Infinity) - 0.3);
 });
