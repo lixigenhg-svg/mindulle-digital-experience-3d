@@ -436,7 +436,8 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 const ACTIONS = new Set([
-  'bow_start', 'bow_stop', 'pray', 'beads_start', 'beads_stop', 'woodfish',
+  'bow_start', 'bow_stop', 'pray', 'beads_start', 'beads_stop',
+  'woodfish', 'wood_hit', 'sit_start', 'sit_stop', 'kowtow', 'incense', 'offer',
 ]);
 
 function handleAction(ws, msg) {
@@ -489,5 +490,5 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 server.listen(PORT, () => {
-  console.log(`[care] ws server on :${PORT}/ws  capacity=${CAPACITY} maxHalls=${MAX_HALLS} tick=${TICK_MS}ms  origin=${ALLOW_ORIGIN.join('|')}`);
+  console.log(`[care] ws server on :${server.address().port}/ws  capacity=${CAPACITY} maxHalls=${MAX_HALLS} tick=${TICK_MS}ms  origin=${ALLOW_ORIGIN.join('|')}`);
 });

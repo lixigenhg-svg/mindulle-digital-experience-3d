@@ -41,6 +41,7 @@ export interface DonationResult {
   status: 'pending' | 'ok' | 'failed';
   /** 接入网关后返回的支付跳转地址或订单号 */
   paymentUrl?: string;
+  paymentFields?: Record<string, string>;
   orderId?: string;
   message: string;
 }
@@ -50,7 +51,7 @@ const GATEWAY = ENV.VITE_PAYMENT_GATEWAY || '';
 
 /**
  * 提交供养意向。
- * 未配置网关时返回 pending（占位），不跳转、不扣款。
+ * 默认跳转站外支付页。有收件号码时使用表单 POST。
  */
 export async function createDonation(req: DonationRequest): Promise<DonationResult> {
   // 未另建收单网关时，统一走 민들레 안심堂 供养支付页（已接通 Toss 绑卡+订阅）
@@ -61,7 +62,15 @@ export async function createDonation(req: DonationRequest): Promise<DonationResu
     if (req.cycle === 'monthly') p.set('cycle', 'monthly');
     if (req.premium) p.set('premium', '1');
     if (req.gift) p.set('gift', '1');
-    if (req.rphone) p.set('rphone', req.rphone.replace(/[^0-9]/g, ''));
+    const recipient = req.gift ? req.rphone?.replace(/[^0-9]/g, '') : undefined;
+    if (recipient) {
+      return {
+        status: 'ok',
+        paymentUrl: base,
+        paymentFields: { ...Object.fromEntries(p), rphone: recipient },
+        message: '이용권 결제 페이지로 이동합니다',
+      };
+    }
     return {
       status: 'ok',
       paymentUrl: `${base}?${p.toString()}`,
