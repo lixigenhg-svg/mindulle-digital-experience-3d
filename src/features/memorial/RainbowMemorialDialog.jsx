@@ -119,12 +119,15 @@ export function RainbowMemorialDialog({ open, onClose }) {
   const [creating, setCreating] = useState(false);
   const [newPetName, setNewPetName] = useState('');
   const [newMessage, setNewMessage] = useState('');
+  const [newPhotos, setNewPhotos] = useState([]);
+  const newNameInput = useRef(null);
+  useEffect(() => { if (creating) newNameInput.current?.focus(); }, [creating]);
   const [notice, setNotice] = useState('');
   const fileInputRef = useRef(null);
 
   const isLoggedIn = Boolean(getOwnerToken());
 
-  const refreshRooms = useCallback(async () => {
+  const refreshRooms = useCallback(async ({ preserveError = false } = {}) => {
     try {
       const data = await petApi.listRooms();
       const nextRooms = data?.rooms || [];
@@ -134,7 +137,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
         return nextRooms.find((room) => room.id === current.id) || current;
       });
       setPhase('rooms');
-      setError(null);
+      if (!preserveError) setError(null);
       return nextRooms;
     } catch (err) {
       if (err instanceof PetApiError && err.status === 401) {
@@ -245,22 +248,39 @@ export function RainbowMemorialDialog({ open, onClose }) {
       setError(new Error('아이의 이름과 남기고 싶은 말을 적어 주세요.'));
       return;
     }
+    if (!newPhotos.length) {
+      setError(new Error('사진을 한 장 이상 선택해 주세요.'));
+      return;
+    }
     setBusy(true);
     setError(null);
+    let createdRoom;
     try {
+      const images = [];
+      for (const file of newPhotos) images.push(await fileToJpegDataUrl(file));
       const data = await petApi.createRoom({
         petName: newPetName.trim(),
         message: newMessage.trim(),
       });
-      setNewPetName('');
-      setNewMessage('');
-      setCreating(false);
-      setSelected(data.room);
-      await refreshRooms();
-      setNotice('미리보기 추모관을 만들었습니다. 사진을 올려 주세요.');
+      createdRoom = data.room;
+      for (const image of images) await petApi.addPhoto(createdRoom.id, image);
+      setNotice('사진을 올리고 미리보기 추모관을 만들었습니다.');
     } catch (err) {
-      setError(err);
+      if (createdRoom) {
+        setError(new Error('추모관은 만들어졌지만 일부 사진을 올리지 못했습니다. 사진 목록에서 다시 올려 주세요.'));
+      } else {
+        setError(err);
+      }
     } finally {
+      if (createdRoom) {
+        setNewPetName('');
+        setNewMessage('');
+        setNewPhotos([]);
+        setSelected(createdRoom);
+        setCreating(false);
+        await refreshSelected(createdRoom.publicId);
+        await refreshRooms({ preserveError: true });
+      }
       setBusy(false);
     }
   };
@@ -490,7 +510,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
                 ))}
               </div>
 
-              <button type="button" className="mdl-memorial-new" onClick={() => setCreating(true)}>
+              <button type="button" className="mdl-memorial-new" disabled={busy} onClick={() => { setCreating(true); newNameInput.current?.focus(); }}>
                 + 새 추모관 만들기
               </button>
               <p className="mdl-memorial-fine">
@@ -502,10 +522,11 @@ export function RainbowMemorialDialog({ open, onClose }) {
               {creating ? (
                 <section className="mdl-memorial-create">
                   <h3>새 추모관</h3>
-                  <p>먼저 아이의 이름과 남기고 싶은 말을 적어 주세요. 사진은 만든 뒤에 올릴 수 있습니다.</p>
+                  <p>아이의 이름과 남기고 싶은 말을 적고 사진을 선택해 주세요.</p>
                   <label>
                     <span>아이의 이름</span>
                     <input
+                      ref={newNameInput}
                       maxLength={20}
                       placeholder="예: 초롱이"
                       value={newPetName}
@@ -522,9 +543,20 @@ export function RainbowMemorialDialog({ open, onClose }) {
                       onChange={(event) => setNewMessage(event.target.value)}
                     />
                   </label>
+                  <label>
+                    <span>사진 선택 (1~5장)</span>
+                    <input type="file" accept="image/*" multiple disabled={busy} onChange={event => {
+                      const files = Array.from(event.currentTarget.files || []);
+                      const invalid = files.length > MAX_PHOTOS || files.some(file => !file.type.startsWith('image/'));
+                      setNewPhotos(invalid ? [] : files);
+                      setError(invalid ? new Error('이미지 파일을 최대 5장까지 선택해 주세요.') : null);
+                      if (invalid) event.currentTarget.value = '';
+                    }} />
+                    {newPhotos.length > 0 && <span>{newPhotos.length}장 선택됨</span>}
+                  </label>
                   <div className="mdl-memorial-actions">
                     <button type="button" className="mdl-memorial-primary" onClick={createRoom} disabled={busy}>
-                      무료 미리보기 만들기
+                      {busy ? '추모관을 만들고 있습니다…' : '무료 미리보기 만들기'}
                     </button>
                     <button type="button" onClick={() => setCreating(false)} disabled={busy}>
                       취소
