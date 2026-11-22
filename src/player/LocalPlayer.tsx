@@ -254,11 +254,13 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     return p;
   };
   /* ---------- 键盘 ---------- */
+  const walkTolerance = useRef(0.15);
   // 供外部调用：让玩家自动走到某点（上香等场景使用）
   useEffect(() => {
-    (window as any).__MD_WALK__ = (x: number, z: number) => {
+    (window as any).__MD_WALK__ = (x: number, z: number, tolerance = 0.15) => {
       const s = state.current;
       s.target = new THREE.Vector3(x, 0, z);
+      walkTolerance.current = tolerance;
     };
     // 运镜：上香特写时把镜头拉近并绕到侧面
     (window as any).__MD_CAM__ = (dist: number, pitch: number, yaw: number) => {
@@ -268,9 +270,9 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
       if (typeof yaw === 'number') s.yaw = yaw;
     };
     // 定点机位：上香特写用（绝对坐标 + 指定注视点），绕过第三人称跟随
-    (window as any).__MD_FIXCAM__ = (p?: [number, number, number], t?: [number, number, number]) => {
+    (window as any).__MD_FIXCAM__ = (p?: [number, number, number], t?: [number, number, number], snap = true) => {
       state.current.fixCam = p && t ? { p, t } : null;
-      state.current.fixSnap = !!(p && t);
+      state.current.fixSnap = snap && !!(p && t);
     };
     // 当前真实位置（落座流程判断“到没到垫子”用）
     (window as any).__MD_POS__ = () => ({ x: state.current.pos.x, z: state.current.pos.z });
@@ -377,6 +379,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
         if (p) {
           clampRoom(p);
           state.current.target = p;
+          walkTolerance.current = 0.15;
         }
       }
     };
@@ -476,7 +479,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
         } else if (s.target) {
           move.subVectors(s.target, s.pos);
           move.y = 0;
-          if (move.length() < 0.15) { s.target = null; move.set(0, 0, 0); }
+          if (move.length() < walkTolerance.current) { s.target = null; move.set(0, 0, 0); }
         }
       }
     }
@@ -518,16 +521,19 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     if (moving && !touring && !greeting) {
       move.normalize();
       if (lock !== 'translate') {
-        s.pos.addScaledVector(move, s.speedCur * dt);
+        const x = s.pos.x;
+        const z = s.pos.z;
+        const step = s.target ? Math.min(s.speedCur * dt, Math.hypot(s.target.x - x, s.target.z - z)) : s.speedCur * dt;
+        s.pos.addScaledVector(move, step);
+        s.pos.x = THREE.MathUtils.clamp(s.pos.x, -BOUNDS, BOUNDS);
+        s.pos.z = THREE.MathUtils.clamp(s.pos.z, BOUNDS_Z_MIN, BOUNDS_Z_MAX);
+        clampRoom(s.pos);
         const prev = s.walkPhase;
-        s.walkPhase += (s.speedCur * dt) / 0.30 * Math.PI; // 一个 π = 一步 0.30 m，相位与位移绑定，脚不打滑
+        s.walkPhase += Math.hypot(s.pos.x - x, s.pos.z - z) / 0.30 * Math.PI; // 一个 π = 一步 0.30 m，相位与位移绑定，脚不打滑
         // 每迈出一步（相位跨过 π 的整数倍）响一次脚步
         if (Math.floor(prev / Math.PI) !== Math.floor(s.walkPhase / Math.PI)) {
           sharedAudio.engine?.step(s.pos.z < 31 && s.pos.z > -15);
         }
-        s.pos.x = THREE.MathUtils.clamp(s.pos.x, -BOUNDS, BOUNDS);
-        s.pos.z = THREE.MathUtils.clamp(s.pos.z, BOUNDS_Z_MIN, BOUNDS_Z_MAX);
-        clampRoom(s.pos);
       }
       const targetRot = Math.atan2(-move.x, -move.z);
       let diff = targetRot - s.facing;

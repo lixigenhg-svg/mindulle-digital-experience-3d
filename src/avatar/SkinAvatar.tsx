@@ -1,3 +1,4 @@
+import { INCENSE_BURNER_Z, INCENSE_INSERT_Y } from '../config';
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -9,6 +10,22 @@ export const RIG_AVATAR_URL = 'assets/models/avatar.glb';
 const MONK_URL = 'assets/models/little-monk-yellow.glb';
 const MONK_HEIGHT = 1.686;
 const INCENSE_DURATION = 6.4;
+const STRIDE = 0.30;
+const LEG_LENGTH = 0.29;
+const WALK_DROP = 0.04;
+
+function walkLeg(phase: number, scale: number, thigh: THREE.Bone, shin: THREE.Bone, foot: THREE.Bone) {
+  const cycle = ((phase / (2 * Math.PI)) % 1 + 1) % 1;
+  const swing = Math.max(0, cycle * 2 - 1);
+  const forward = (cycle < 0.5 ? 0.5 - cycle * 2 : -0.5 + swing * swing * (3 - 2 * swing))
+    * STRIDE / scale;
+  const lift = Math.sin(Math.PI * swing) * 0.085 / scale;
+  const down = 2 * LEG_LENGTH - (WALK_DROP + lift * scale) / scale;
+  const bend = Math.acos(Math.min(1, Math.hypot(forward, down) / (2 * LEG_LENGTH)));
+  thigh.rotation.set(-Math.atan2(forward, down) - bend, 0, 0);
+  shin.rotation.set(2 * bend, 0, 0);
+  foot.rotation.set(-thigh.rotation.x - shin.rotation.x, 0, 0);
+}
 
 const BONE_NAMES = [
   'hips', 'spine', 'chest', 'neck', 'head',
@@ -254,7 +271,7 @@ function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt 
       armL: [-sw * R(24) + R(4), 0, R(4)], armR: [sw * R(24) - R(4), 0, R(-4)],
       foreL: [R(14) - sw * R(10) + Math.max(0, -sw) * R(8), 0, R(-4)],
       foreR: [R(14) + sw * R(10) + Math.max(0, sw) * R(8), 0, R(4)],
-      hips: [0, sw * R(4), 0],
+      hips: [0, 0, 0],
       spine: [R(3), 0, 0],
       chest: [R(1), -sw * R(5), -sw * R(1.5)],
       head: [R(-1), 0, 0],
@@ -280,6 +297,12 @@ export default function SkinAvatar({
   const previous = useRef<Props['action']>();
   const delta = useMemo(() => new THREE.Quaternion(), []);
   const euler = useMemo(() => new THREE.Euler(), []);
+  const insertion = useMemo(() => new THREE.Vector3(), []);
+  const reachTools = useMemo(() => ({
+    displacement: new THREE.Vector3(), target: new THREE.Vector3(),
+    current: new THREE.Vector3(), desired: new THREE.Vector3(),
+    rotation: new THREE.Quaternion(),
+  }), []);
 
   const avatar = useMemo(() => {
     const scene = cloneSkeleton(model.scene);
@@ -319,7 +342,13 @@ export default function SkinAvatar({
       const animation = THREE.AnimationClip.findByName(model.animations, name);
       return animation ? mixer.clipAction(animation) : undefined;
     };
-    return { scene, joints, mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
+    const legs = ['L', 'R'].map(side => (['Thigh', 'Shin', 'Foot'].map(
+      name => bones.get(norm(`${name}.${side}`))!,
+    ) as [THREE.Bone, THREE.Bone, THREE.Bone]));
+    const arms = ['L', 'R'].map(side => (['UpperArm', 'Forearm', 'Hand'].map(
+      name => bones.get(norm(`${name}.${side}`))!,
+    ) as [THREE.Bone, THREE.Bone, THREE.Bone]));
+    return { scene, joints, legs, arms, spine: bones.get('spine'), incenseBone: bones.get('incense'), mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
   }, [model, original]);
 
   useFrame(({ clock }, dt) => {
@@ -347,9 +376,38 @@ export default function SkinAvatar({
       previous.current = currentAction;
     }
 
+    const walking = currentMotion === 'walk' && currentAction === 'idle';
     if (avatar.incense) avatar.incense.visible = isIncense;
     if (ritual) {
       avatar.mixer.update(dt);
+      const stick = avatar.incenseBone;
+      if (isIncense && stick?.parent && avatar.incense) {
+        const progress = ritual.time / ritual.getClip().duration;
+        const reach = THREE.MathUtils.smoothstep(progress, 0.49, 0.66);
+        const withdraw = 1 - THREE.MathUtils.smoothstep(progress, 0.66, 0.78);
+        const { displacement, target, current, desired, rotation } = reachTools;
+        insertion.set(0, INCENSE_INSERT_Y, INCENSE_BURNER_Z);
+        stick.getWorldPosition(displacement);
+        displacement.subVectors(insertion, displacement).multiplyScalar(reach * withdraw);
+        if (reach > 0 && withdraw > 0) {
+          // Keep the wrists with the incense as the last part of the reach is
+          // aligned to the actual burner, then blend back to the baked release.
+          avatar.spine?.rotateX(0.26 * reach * withdraw);
+          for (const [shoulder, elbow, hand] of avatar.arms) {
+            hand.getWorldPosition(target).addScaledVector(displacement, 0.8);
+            for (let pass = 0; pass < 3; pass++) {
+              for (const joint of [elbow, shoulder]) {
+                joint.worldToLocal(hand.getWorldPosition(current)).normalize();
+                joint.worldToLocal(desired.copy(target)).normalize();
+                joint.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
+              }
+            }
+          }
+        }
+        stick.parent.worldToLocal(insertion);
+        stick.position.lerp(insertion, reach);
+        avatar.incense.visible = progress < 0.67;
+      }
     } else {
       const pose = poseOf(currentMotion, currentAction, t, phase, seatKind);
       const blend = Math.min(1, dt * 9);
@@ -366,9 +424,15 @@ export default function SkinAvatar({
 
     const group = offset.current;
     if (!group) return;
-    const walking = currentMotion === 'walk' && currentAction === 'idle';
+    if (walking) {
+      // Keep the stance foot fixed relative to the floor as the avatar moves.
+      const scale = avatar.scene.getWorldScale(insertion).y / group.scale.y;
+      for (const [index, leg] of avatar.legs.entries()) {
+        walkLeg(phase + index * Math.PI, scale, ...leg);
+      }
+    }
     const stride = Math.sin(phase);
-    const bob = walking ? -(1 - Math.cos(stride * R(17))) * 0.62 - 0.012 : 0;
+    const bob = walking ? -WALK_DROP : 0;
     const seated = currentAction === 'sitting';
     const y = (seated ? -0.42 : 0) + bob;
     group.position.y += (y - group.position.y) * Math.min(1, dt * 10);

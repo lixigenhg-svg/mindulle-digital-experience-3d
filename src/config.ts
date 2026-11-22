@@ -101,3 +101,8 @@ export const CUSHION_COLS = [-8.55, -6.65, -4.75, -2.85, -0.95, 0.95, 2.85, 4.75
 export const HALL_SCALE = 0.62;
 
 
+
+// The incense burner is inside the scaled main hall.
+export const INCENSE_BURNER_LOCAL_Z = -5.87;
+export const INCENSE_BURNER_Z = INCENSE_BURNER_LOCAL_Z * HALL_SCALE + 8 * (1 - HALL_SCALE);
+export const INCENSE_INSERT_Y = 0.67;

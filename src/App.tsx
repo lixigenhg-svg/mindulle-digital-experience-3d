@@ -31,7 +31,7 @@ import { playerMotion } from './avatar/animState';
 import { AudioEngine, sharedAudio } from './audio';
 import { Net } from './net';
 import { makeIdentity } from './names';
-import { bumpInstance, parseRoom, MOVE_SEND_INTERVAL } from './config';
+import { bumpInstance, parseRoom, MOVE_SEND_INTERVAL, INCENSE_BURNER_Z, MOVE_SPEED } from './config';
 import { store } from './store';
 import { haptic } from './immersive';
 import { expireNightPass, expirePremium, refreshPremium } from './paid';
@@ -437,34 +437,29 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   };
 
   const onIncense = () => {
-    // 参照原项目：走到香案前站定 → 镜头拉近到侧面 → 点香、插香、合手 → 找空垫坐下行礼
-    // 香案（长香案）现在在 z≈-0.6，人站到它前面 0.9m 的位置
-    const P = { x: 0, z: 0.55 };
-    const walk = (window as unknown as { __MD_WALK__?: (x: number, z: number) => void }).__MD_WALK__;
+    const P = { x: 0, z: INCENSE_BURNER_Z + 0.76 };
+    const walk = (window as unknown as { __MD_WALK__?: (x: number, z: number, tolerance?: number) => void }).__MD_WALK__;
     const face = (window as unknown as { __MD_FACE__?: (r: number) => void }).__MD_FACE__;
     const pos = (window as unknown as { __MD_POS__?: () => { x: number; z: number } }).__MD_POS__;
     const cam = (window as unknown as { __MD_CAM__?: (d: number, p: number, y: number) => void }).__MD_CAM__;
     const fix = (window as unknown as {
-      __MD_FIXCAM__?: (p?: [number, number, number], t?: [number, number, number]) => void;
+      __MD_FIXCAM__?: (p?: [number, number, number], t?: [number, number, number], snap?: boolean) => void;
     }).__MD_FIXCAM__;
-    // 快速走过去（不是瞬移）：临时把移动速度提到 3.6 倍，到案前再恢复
-    (window as unknown as { __MD_SPEED_K__?: number }).__MD_SPEED_K__ = 6.0;
-    const start0 = pos?.();
-    const dist = start0 ? Math.hypot(start0.x - P.x, start0.z - P.z) : 0;
-    const budget = Math.min(16000, 1200 + dist * 260);   // 按距离给时间，跑得快也留足余量
-    walk?.(P.x, P.z);
+    const start = pos?.();
+    const dist = start ? Math.hypot(start.x - P.x, start.z - P.z) : 0;
+    const budget = 5000 + (dist / MOVE_SPEED) * 1500;
+    walk?.(P.x, P.z, 0.025);
     const scale = (window as unknown as { __MD_SCALE__?: (k: number) => void }).__MD_SCALE__;
     scale?.(1.15);   // 走近塑像时按设计比例把人放大，别显小
     const t0 = performance.now();
     const arrive = () => {
       const now = pos?.();
       const d = now ? Math.hypot(now.x - P.x, now.z - P.z) : 0;
-      if (d < 0.35 || performance.now() - t0 > budget) {
-        (window as unknown as { __MD_SPEED_K__?: number }).__MD_SPEED_K__ = 1;
+      if (d < 0.04) {
         // 面朝香案，镜头贴近并从侧面看动作
         face?.(0);   // 实测 face(0) 就是面朝塑像（-z），别再改成别的角度
         cam?.(2.3, 0.28, -1.30);
-        fix?.([2.40, 1.45, P.z + 0.75], [0, 1.00, P.z - 0.28]);   // 从侧面看清双手持香
+        fix?.([2.35, 1.48, P.z - 0.95], [0, 0.96, P.z - 0.30], false);
         window.setTimeout(() => {
           face?.(0);                           // 到位后再锁一次朝向（行走会把人转向通道）
           machineRef.current?.incense(6400);   // 挺直站立→前倾→双手插香→直身，慢慢做完
@@ -474,10 +469,10 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           store.lightIncense();                // 插香：香头点亮、青烟升起
           store.toast('향을 올렸습니다');
           haptic('double');
-        }, 3800);
+        }, 4750);
         window.setTimeout(() => {
           cam?.(2.0, 0.20, -1.35);
-          fix?.([1.85, 1.35, P.z + 0.60], [0, 0.95, P.z - 0.36]);   // 侧面推近，保留双手和香
+          fix?.([1.85, 1.38, P.z - 0.82], [0, 0.90, P.z - 0.38], false);
         }, 3400);
         window.setTimeout(() => {
           machineRef.current?.pray();
@@ -490,7 +485,11 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
         }, 9000);
         return;
       }
-      window.setTimeout(arrive, 200);
+      if (performance.now() - t0 > budget) {
+        scale?.(1);
+        return;
+      }
+      window.setTimeout(arrive, 100);
     };
     window.setTimeout(arrive, 300);
   };

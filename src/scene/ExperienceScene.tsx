@@ -5,7 +5,7 @@
  * 香案（香炉·烛台·青瓷花瓶）/ 长香案与木鼓钵 / 塑像模型位 / 方形蒲团阵列 / 吊灯 / 灯光阴影。
  * 主塑像、协侍菩萨、小角色均为 GLTF 模型位：模型未到位时用占位体，不伪造高精度造像。
  */
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, useTexture, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -15,7 +15,7 @@ import SculptAvatar from '../avatar/SculptAvatar';
 import PhotoStatue from './PhotoStatue';
 import MeshStatue from './MeshStatue';
 import { PALETTES } from './StatueFigure';
-import { CUSHION_ROWS, CUSHION_COLS, HALL_SCALE } from '../config';
+import { CUSHION_ROWS, CUSHION_COLS, HALL_SCALE, INCENSE_BURNER_LOCAL_Z } from '../config';
 import NpcCrowd from './NpcCrowd';
 import TeaHouse from './TeaHouse';
 import WishWall from './WishWall';
@@ -539,9 +539,9 @@ function IncenseSmoke({ position }: { position: [number, number, number] }) {
 }
 
 function Burner() {
-  const lit = store.hud.litIncense;
+  const lit = useSyncExternalStore(store.subscribe, () => store.hud.litIncense);
   return (
-    <group position={[0, 0.575, -5.87]}>
+    <group position={[0, 0.575, INCENSE_BURNER_LOCAL_Z]}>
       <mesh castShadow>
         <cylinderGeometry args={[0.18, 0.12, 0.12, 16]} />
         <meshStandardMaterial color={0x4a3a26} roughness={0.6} metalness={0.3} />
