@@ -1,3 +1,4 @@
+import { KOWTOW_DURATION_MS } from '../actions';
 import { INCENSE_BURNER_Z, INCENSE_INSERT_Y, INCENSE_DURATION_MS, INCENSE_INSERT_DURATION_MS, INCENSE_RELEASE } from '../config';
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -46,6 +47,35 @@ function steadyIncenseClip(source: THREE.AnimationClip) {
   incenseClips.set(source, clip);
   return clip;
 }
+const prostrationClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+
+function holdProstration(source: THREE.AnimationClip) {
+  const cached = prostrationClips.get(source);
+  if (cached) return cached;
+  const lowest = source.duration * 0.5;
+  const pause = source.duration * (KOWTOW_DURATION_MS / 3000 - 1);
+  const tracks = source.tracks.map(track => {
+    const width = track.getValueSize();
+    const before = Array.from(track.times).findIndex(time => time >= lowest);
+    if (before < 0) return track.clone();
+    const pose = Array.from(track.createInterpolant().evaluate(lowest) as Float32Array);
+    const resume = track.times[before] === lowest ? before + 1 : before;
+    const held = track.clone();
+    held.times = Float32Array.from([
+      ...track.times.slice(0, before), lowest, lowest + pause,
+      ...track.times.slice(resume).map(time => time + pause),
+    ]);
+    held.values = Float32Array.from([
+      ...track.values.slice(0, before * width), ...pose, ...pose,
+      ...track.values.slice(resume * width),
+    ]);
+    return held;
+  });
+  const clip = new THREE.AnimationClip(source.name, source.duration + pause, tracks);
+  prostrationClips.set(source, clip);
+  return clip;
+}
+
 const STRIDE = 0.30;
 const LEG_LENGTH = 0.29;
 const WALK_DROP = 0.04;
@@ -378,7 +408,8 @@ export default function SkinAvatar({
     const mixer = new THREE.AnimationMixer(scene);
     const clip = (name: string) => {
       const animation = THREE.AnimationClip.findByName(model.animations, name);
-      return animation ? mixer.clipAction(name === 'OfferIncense' ? steadyIncenseClip(animation) : animation) : undefined;
+      if (!animation) return undefined;
+      return mixer.clipAction(name === 'OfferIncense' ? steadyIncenseClip(animation) : holdProstration(animation));
     };
     const legs = ['L', 'R'].map(side => (['Thigh', 'Shin', 'Foot'].map(
       name => bones.get(norm(`${name}.${side}`))!,
@@ -418,7 +449,7 @@ export default function SkinAvatar({
         const repeat = !live || currentAction === 'bowing';
         ritual.reset().setLoop(repeat ? THREE.LoopRepeat : THREE.LoopOnce, repeat ? Infinity : 1);
         ritual.clampWhenFinished = !repeat;
-        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION_MS / 1000 : 3).play();
+        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION_MS / 1000 : KOWTOW_DURATION_MS / 1000).play();
         if (repeat && timeShift) {
           const duration = ritual.getClip().duration;
           ritual.time = ((timeShift % duration) + duration) % duration;

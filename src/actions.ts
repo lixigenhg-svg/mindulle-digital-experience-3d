@@ -8,6 +8,8 @@
  * 事件同时驱动「网络上报」与「本地音效」，由构造回调 emit 出去。
  */
 
+export const KOWTOW_DURATION_MS = 3600;
+
 export type ActionState = 'idle' | 'bowing' | 'praying' | 'beads' | 'wood_hit' | 'sitting' | 'kowtow' | 'incense' | 'offering';
 
 export type ActionEvent =
@@ -99,7 +101,7 @@ export class ActionMachine {
   /** 行礼（一次性：跪下—俯身—起身） */
   kowtow(): void {
     this.setState('kowtow');
-    this.until = performance.now() + 3000;
+    this.until = performance.now() + KOWTOW_DURATION_MS;
     this.emit('kowtow');
   }
 
