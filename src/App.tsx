@@ -2,7 +2,7 @@
  * App.tsx —— 装配：入口页、3D 场景、本地玩家、远端容器、网络、音频、动作机、108 珠串与 DOM HUD。
  * 网络事件写状态仓；UI 与 3D 组件从仓读取。
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react';
 import type { WebGLRenderer } from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import ExperienceScene from './scene/ExperienceScene';
@@ -21,7 +21,6 @@ import { fetchLamps } from './api/lamps';
 import MalaWheel from './ui/MalaWheel';
 import Woodfish from './ui/Woodfish';
 import RainTea from './ui/RainTea';
-import RainbowMemorialDialog from './features/memorial/RainbowMemorialDialog.jsx';
 import { consumeRainTeaReturn } from './api/rainTea';
 import DonationModal from './ui/DonationModal';
 import ServerModal from './ui/ServerModal';
@@ -41,6 +40,8 @@ import { store } from './store';
 import { haptic } from './immersive';
 import { expireNightPass, expirePremium, refreshPremium } from './paid';
 import { forgetPrivateEntry, getPrivateEntry, isPrivateRoom, rememberPrivateEntry } from './privateRoom';
+
+const RainbowMemorialDialog = lazy(() => import('./features/memorial/RainbowMemorialDialog.jsx'));
 
 const IS_MOBILE =
   typeof matchMedia !== 'undefined' && (matchMedia('(pointer:coarse)').matches || innerWidth < 768);
@@ -650,7 +651,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           <PrivateSalon mood={privateMood} lampLit={privateLamp} tea={privateTea} />
         ) : (
           <>
-            <ExperienceScene onOpenMemorial={() => { if (entered) setMemorialOpen(true); }} />
+            <ExperienceScene />
             <Exterior />
           </>
         )}
@@ -694,6 +695,12 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
               className="pointer-events-auto absolute bottom-[110px] left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/55 px-6 py-3 text-[15px] text-amber-100 shadow-lg backdrop-blur-md transition hover:bg-black/70"
             >
               {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '앉기'}
+            </button>
+          )}
+          {!isPrivate && inTeaHouse && !rainTeaOpen && !memorialOpen && (
+            <button type="button" onClick={() => setMemorialOpen(true)}
+              className="absolute bottom-[86px] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-900/85 px-5 py-2 text-sm text-amber-100">
+              무지개다리 추모관
             </button>
           )}
           {!isPrivate && inTeaHouse && !rainTeaOpen && (
@@ -741,7 +748,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
       )}
 
       {rainTeaOpen && <RainTea invite={rainTeaInvite} onClose={closeRainTea} />}
-      {memorialOpen && <RainbowMemorialDialog open onClose={() => setMemorialOpen(false)} />}
+      {memorialOpen && <Suspense fallback={null}><RainbowMemorialDialog open onClose={() => setMemorialOpen(false)} /></Suspense>}
       <DonationModal />
       <ServerModal />
       <SettingsModal engine={audioRef.current} />

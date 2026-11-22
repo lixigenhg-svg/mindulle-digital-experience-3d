@@ -1,347 +1,703 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { MemorialCanvas } from './RainbowMemorialScene.jsx';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  MemorialApiError,
-  clearSavedMemorial,
-  compressPhoto,
-  createMemorial,
-  deleteMemorial,
-  getMemorial,
-  loadSavedMemorial,
-  saveMemorial
-} from './api.js';
+  clearOwnerToken,
+  getOwnerToken,
+  petApi,
+  PetApiError,
+  loadMemorialPhoto,
+  setOwnerToken,
+} from './api';
+import { RainbowMemorialScene } from './RainbowMemorialScene';
+import './memorial.css';
 
-function formatError(error) {
-  if (error instanceof MemorialApiError && error.status === 404) return '추모관 저장 서비스가 아직 연결되지 않았습니다.';
-  if (error instanceof MemorialApiError) return error.message;
-  return '잠시 후 다시 시도해 주세요.';
+const MAX_PHOTOS = 5;
+
+const STATUS = {
+  preview: { label: '미리보기', tone: 'preview' },
+  active: { label: '이용 중', tone: 'active' },
+  canceled: { label: '해지 예정', tone: 'canceled' },
+  past_due: { label: '갱신 결제 실패', tone: 'danger' },
+  payment_failed: { label: '결제 중단', tone: 'danger' },
+  expired: { label: '기간 만료', tone: 'muted' },
+  deleted: { label: '삭제됨', tone: 'muted' },
+};
+
+function won(value) {
+  return `₩${Number(value || 0).toLocaleString('ko-KR')}`;
 }
 
-export default function RainbowMemorialDialog({ open, onClose }) {
-  const dialogRef = useRef(null);
-  const [phase, setPhase] = useState('loading');
-  const [memorial, setMemorial] = useState(null);
-  const [ownerToken, setOwnerToken] = useState('');
-  const [petName, setPetName] = useState('');
-  const [message, setMessage] = useState('');
-  const [photoFile, setPhotoFile] = useState(null);
-  const [preview, setPreview] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [toast, setToast] = useState('');
-  const [loadError, setLoadError] = useState('');
-  const [loadAttempt, setLoadAttempt] = useState(0);
+function dateText(value) {
+  if (!value) return '-';
+  try {
+    return new Intl.DateTimeFormat('ko-KR', {
+      dateStyle: 'long',
+      timeZone: 'Asia/Seoul',
+    }).format(new Date(value));
+  } catch {
+    return '-';
+  }
+}
 
+function normalizePhone(value) {
+  return String(value || '').replace(/[^0-9]/g, '');
+}
+
+async function fileToJpegDataUrl(file) {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = objectUrl;
+    });
+
+    const maxSide = 1200;
+    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#f7f1e6';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(img, 0, 0, width, height);
+    for (const quality of [0.82, 0.68, 0.5]) {
+      const jpeg = canvas.toDataURL('image/jpeg', quality);
+      if (jpeg.startsWith('data:image/jpeg;base64,') && jpeg.length <= 1_330_000) return jpeg;
+    }
+    throw new Error('사진 용량이 너무 큽니다. 다른 사진을 선택해 주세요.');
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function ErrorText({ error }) {
+  if (!error) return null;
+  const text = error instanceof Error ? error.message : String(error);
+  return <p className="mdl-memorial-error">{text}</p>;
+}
+
+function useRoomPhotos(room) {
+  const [loaded, setLoaded] = useState(null);
+  const photoKey = JSON.stringify(room?.ownerAccess ? room.photos : []);
   useEffect(() => {
-    if (!open) return;
-    const element = dialogRef.current;
-    if (element && !element.open) element.showModal();
+    const controller = new AbortController();
+    const urls = [];
+    Promise.allSettled(JSON.parse(photoKey).map(async photo => {
+      const blob = await loadMemorialPhoto(photo.url, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      const url = URL.createObjectURL(blob);
+      urls.push(url);
+      return { ...photo, url };
+    })).then(results => {
+      if (!controller.signal.aborted) {
+        setLoaded({ key: photoKey, photos: results.flatMap(result => result.status === 'fulfilled' && result.value ? [result.value] : []) });
+      }
+    });
     return () => {
-      if (element?.open) element.close();
+      controller.abort();
+      urls.forEach(url => URL.revokeObjectURL(url));
     };
-  }, [open]);
+  }, [photoKey]);
+  return loaded?.key === photoKey ? loaded.photos : [];
+}
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setPhase('loading');
-    setLoadError('');
+export function RainbowMemorialDialog({ open, onClose }) {
+  const [config, setConfig] = useState(null);
+  const [phase, setPhase] = useState('login'); // login | rooms
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [rooms, setRooms] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const loadedPhotos = useRoomPhotos(selected);
+  const [creating, setCreating] = useState(false);
+  const [newPetName, setNewPetName] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+  const [notice, setNotice] = useState('');
+  const fileInputRef = useRef(null);
 
-    const saved = loadSavedMemorial();
-    if (!saved) {
-      setPhase('form');
-      return () => { cancelled = true; };
-    }
+  const isLoggedIn = Boolean(getOwnerToken());
 
-    getMemorial(saved.publicId)
-      .then(({ memorial: loaded }) => {
-        if (cancelled) return;
-        setMemorial(loaded);
-        setOwnerToken(saved.ownerToken);
-        setPhase('inside');
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        if (err instanceof MemorialApiError && err.status === 404) {
-          clearSavedMemorial();
-          setPhase('form');
-          return;
-        }
-        setLoadError('저장된 추모관을 불러오지 못했습니다.');
-        setPhase('loadError');
-      });
-
-    return () => { cancelled = true; };
-  }, [open, loadAttempt]);
-
-  useEffect(() => () => {
-    if (preview) URL.revokeObjectURL(preview);
-  }, [preview]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(''), 2600);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  function close() {
-    if (busy) return;
-    if (dialogRef.current?.open) dialogRef.current.close();
-    onClose?.();
-  }
-
-  function pickPhoto(file) {
-    if (!file) return;
-    if (preview) URL.revokeObjectURL(preview);
-    setPhotoFile(file);
-    setPreview(URL.createObjectURL(file));
-    setError('');
-  }
-
-  async function submit(event) {
-    event?.preventDefault();
-    if (busy) return;
-    if (!petName.trim()) {
-      setError('아이의 이름을 적어 주세요.');
-      return;
-    }
-    if (!photoFile) {
-      setError('사진 한 장을 올려 주세요.');
-      return;
-    }
-
-    setBusy(true);
-    setError('');
-    setLoadError('');
+  const refreshRooms = useCallback(async () => {
     try {
-      const imageDataUrl = await compressPhoto(photoFile);
-      const response = await createMemorial({
-        petName: petName.trim().slice(0, 20),
-        message: message.trim().slice(0, 500),
-        imageDataUrl
+      const data = await petApi.listRooms();
+      const nextRooms = data?.rooms || [];
+      setRooms(nextRooms);
+      setSelected((current) => {
+        if (!current) return current;
+        return nextRooms.find((room) => room.id === current.id) || current;
       });
-      saveMemorial({ publicId: response.memorial.publicId, ownerToken: response.ownerToken });
-      setOwnerToken(response.ownerToken);
-      setMemorial(response.memorial);
-      setPhase('inside');
+      setPhase('rooms');
+      setError(null);
+      return nextRooms;
     } catch (err) {
-      setError(formatError(err));
-    } finally {
-      setBusy(false);
+      if (err instanceof PetApiError && err.status === 401) {
+        clearOwnerToken();
+        setPhase('login');
+        setSelected(null);
+        setRooms([]);
+      } else {
+        setError(err);
+      }
+      return [];
     }
-  }
+  }, []);
 
-  async function share() {
-    if (!memorial) return;
-    const url = memorial.shareUrl || `https://mindulle.kr/pet/${memorial.publicId}`;
-    const payload = {
-      title: `${memorial.petName} · 무지개다리 추모관`,
-      text: String(memorial.message || '').slice(0, 80),
-      url
-    };
-
+  const refreshSelected = useCallback(async (publicId) => {
+    if (!publicId) return;
     try {
-      if (navigator.share) {
-        await navigator.share(payload);
+      const data = await petApi.getRoom(publicId);
+      if (data?.room) setSelected(data.room);
+    } catch (err) {
+      if (err instanceof PetApiError && err.status === 403) {
+        // 预览过期/宽限期结束：保留列表里的摘要，让主人仍能看到“重新开通”
         return;
       }
-      await navigator.clipboard.writeText(url);
-      setToast('추모 페이지 링크를 복사했습니다.');
-    } catch (err) {
-      if (err?.name !== 'AbortError') setToast('링크를 복사하지 못했습니다.');
+      setError(err);
     }
-  }
+  }, []);
 
-  async function remove() {
-    if (!memorial || !ownerToken) return;
-    if (!window.confirm('추모관을 지우면 사진과 남긴 말이 함께 사라집니다. 지울까요?')) return;
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    setNotice('');
+    petApi.config().then(setConfig).catch(setError);
+    refreshRooms();
+  }, [open, refreshRooms]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const timer = window.setInterval(() => {
+      if (getOwnerToken()) refreshRooms();
+      if (selected?.publicId) refreshSelected(selected.publicId);
+    }, 20000);
+    const onFocus = () => {
+      if (getOwnerToken()) refreshRooms();
+      if (selected?.publicId) refreshSelected(selected.publicId);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [open, selected?.publicId, refreshRooms, refreshSelected]);
+
+  const sendCode = async () => {
+    const digits = normalizePhone(phone);
+    if (!/^010\d{8}$/.test(digits)) {
+      setError(new Error('010으로 시작하는 휴대폰 번호를 입력해 주세요.'));
+      return;
+    }
     setBusy(true);
-    setError('');
+    setError(null);
+    setNotice('');
     try {
-      await deleteMemorial(memorial.publicId, ownerToken);
-      clearSavedMemorial();
-      setMemorial(null);
-      setOwnerToken('');
-      setPetName('');
-      setMessage('');
-      setPhotoFile(null);
-      if (preview) URL.revokeObjectURL(preview);
-      setPreview('');
-      setPhase('form');
-      setToast('추모관을 지웠습니다.');
+      const data = await petApi.sendCode(digits);
+      setPhone(digits);
+      setCooldown(Number(data?.cooldown || 60));
+      setNotice('인증번호를 보냈습니다. 3분 안에 입력해 주세요.');
     } catch (err) {
-      setError(formatError(err));
+      setError(err);
+      if (err?.payload?.retryAfter) setCooldown(Number(err.payload.retryAfter));
     } finally {
       setBusy(false);
     }
-  }
+  };
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = window.setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldown]);
+
+  const verify = async () => {
+    const digits = normalizePhone(phone);
+    const value = normalizePhone(code).slice(0, 6);
+    if (!/^010\d{8}$/.test(digits) || value.length !== 6) {
+      setError(new Error('휴대폰 번호와 6자리 인증번호를 확인해 주세요.'));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await petApi.verify(digits, value);
+      setOwnerToken(data.ownerToken);
+      setCode('');
+      setNotice('');
+      setPhase('rooms');
+      const nextRooms = await refreshRooms();
+      setCreating(nextRooms.length === 0);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createRoom = async () => {
+    if (!newPetName.trim() || !newMessage.trim()) {
+      setError(new Error('아이의 이름과 남기고 싶은 말을 적어 주세요.'));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await petApi.createRoom({
+        petName: newPetName.trim(),
+        message: newMessage.trim(),
+      });
+      setNewPetName('');
+      setNewMessage('');
+      setCreating(false);
+      setSelected(data.room);
+      await refreshRooms();
+      setNotice('미리보기 추모관을 만들었습니다. 사진을 올려 주세요.');
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openRoom = async (room) => {
+    setSelected(room);
+    setCreating(false);
+    setError(null);
+    setNotice('');
+    if (room?.publicId) await refreshSelected(room.publicId);
+  };
+
+  const uploadPhotos = async (fileList) => {
+    if (!selected) return;
+    const files = Array.from(fileList || []).filter((file) => file.type.startsWith('image/'));
+    if (!files.length) return;
+    if (selected.photos.length + files.length > MAX_PHOTOS) {
+      setError(new Error(`사진은 최대 ${MAX_PHOTOS}장까지 올릴 수 있습니다.`));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      for (const file of files) {
+        const dataUrl = await fileToJpegDataUrl(file);
+        await petApi.addPhoto(selected.id, dataUrl);
+      }
+      await refreshRooms();
+      setNotice(`${files.length}장을 올렸습니다.`);
+    } catch (err) {
+      await refreshRooms();
+      setError(err);
+    } finally {
+      setBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const removePhoto = async (photoId) => {
+    if (!selected) return;
+    if (!window.confirm('이 사진을 삭제할까요? 삭제 후 다시 올릴 수 있습니다.')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await petApi.deletePhoto(selected.id, photoId);
+      await refreshSelected(selected.publicId);
+      await refreshRooms();
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startCheckout = async () => {
+    if (!selected) return;
+    if (selected.photos.length < 1) {
+      setError(new Error('사진을 한 장 이상 올려 주세요.'));
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await petApi.checkout(selected.id);
+      const url = new URL(data.checkoutUrl);
+      if (url.origin !== 'https://mindulle.kr' || !url.pathname.startsWith('/pet/pay/')) throw new Error('결제 주소를 확인할 수 없습니다.');
+      window.location.assign(url);
+    } catch (err) {
+      setError(err);
+      setBusy(false);
+    }
+  };
+
+  const cancelSubscription = async () => {
+    if (!selected) return;
+    if (!window.confirm('자동 갱신을 해지할까요? 이미 결제한 기간이 끝날 때까지 추모관은 계속 열려 있습니다.')) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await petApi.cancel(selected.id);
+      await refreshSelected(selected.publicId);
+      await refreshRooms();
+      setNotice('자동 갱신을 해지했습니다. 결제한 기간까지는 계속 열려 있습니다.');
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteRoom = async () => {
+    if (!selected) return;
+    if (!window.confirm('추모관을 삭제하면 사진과 글이 모두 삭제됩니다. 정말 삭제할까요?')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await petApi.deleteRoom(selected.id);
+      setSelected(null);
+      await refreshRooms();
+      setNotice('추모관을 삭제했습니다.');
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const share = async () => {
+    if (!selected?.shareUrl) return;
+    const text = `${selected.petName}의 무지개다리 추모관`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: text, text, url: selected.shareUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(selected.shareUrl);
+      setNotice('가족 공유 링크를 복사했습니다.');
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      setError(new Error('공유 링크를 복사하지 못했습니다. 아래 링크를 직접 복사해 주세요.'));
+    }
+  };
+
+  const logout = () => {
+    clearOwnerToken();
+    setSelected(null);
+    setRooms([]);
+    setPhase('login');
+    setNotice('');
+    setError(null);
+  };
+
+  const statusInfo = selected ? STATUS[selected.status] || STATUS.preview : null;
+  const canSeeScene = Boolean(selected && (selected.ownerAccess || selected.familyAccess) && loadedPhotos.length > 0);
+  const canEdit = Boolean(selected && selected.ownerAccess && selected.status !== 'expired');
+  const showPay = Boolean(import.meta.env.VITE_MEMORIAL_CHECKOUT_ENABLED === 'true' && config?.available && selected && ['preview', 'past_due', 'payment_failed', 'expired'].includes(selected.status));
+  const showShare = Boolean(selected && selected.shareEnabled && selected.shareUrl);
 
   if (!open) return null;
 
-  return createPortal(
-    <dialog
-      ref={dialogRef}
-      className="fixed inset-0 m-0 h-screen max-h-none w-screen max-w-none overflow-hidden bg-[#14110e] p-0 text-stone-100"
-      aria-labelledby="memorial-title"
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
-    >
-      <div className="relative h-full w-full overflow-hidden">
-        <header className="absolute inset-x-0 top-0 z-30 flex items-center justify-between bg-gradient-to-b from-black/70 to-transparent px-5 py-4">
+  return (
+    <div className="mdl-memorial-backdrop" role="dialog" aria-modal="true" aria-label="무지개다리 추모관">
+      <div className="mdl-memorial-dialog">
+        <header className="mdl-memorial-head">
           <div>
-            <p className="text-[10px] tracking-[0.22em] text-stone-400">민들레 안심당</p>
-            <h2 id="memorial-title" className="mt-1 text-lg font-medium text-amber-100">무지개다리 추모관</h2>
+            <p className="mdl-memorial-kicker">안심당 · 추모</p>
+            <h2>무지개다리 추모관</h2>
+            <p className="mdl-memorial-sub">한 아이, 한 방. 사진과 편지를 남기고 가족과 나누는 곳.</p>
           </div>
-          <button type="button" onClick={close} className="rounded-full bg-black/50 px-4 py-2 text-sm text-stone-200">
-            돌아가기
+          <button type="button" className="mdl-memorial-close" onClick={onClose} aria-label="닫기">
+            ×
           </button>
         </header>
 
-        {phase === 'loading' ? (
-          <div className="flex h-full items-center justify-center text-sm text-stone-400">
-            추모관을 불러오는 중입니다.
-          </div>
-        ) : null}
-
-        {phase === 'loadError' && (
-          <div className="flex h-full flex-col items-center justify-center gap-4 px-5 text-center">
-            <p role="alert">{loadError}</p>
-            <button type="button" onClick={() => setLoadAttempt(attempt => attempt + 1)}
-              className="rounded-full bg-white/10 px-5 py-3">다시 시도하기</button>
-          </div>
-        )}
-
-        {phase === 'form' ? (
-          <div className="h-full overflow-y-auto px-5 pb-28 pt-24">
-            <form onSubmit={submit} className="mx-auto max-w-xl space-y-6">
-              <div className="space-y-2 text-center">
-                <p className="text-sm leading-6 text-stone-300">
-                  사진 한 장과 이름, 남기고 싶은 말을 적어 주세요.
-                  <br />
-                  추모관은 나만의 공간으로 열리고, 링크를 가족에게 보낼 수 있습니다.
-                </p>
-                {loadError ? <p className="text-sm text-rose-300">{loadError}</p> : null}
-              </div>
-
-              <label className="block">
-                <span className="mb-2 block text-sm text-stone-300">아이의 사진</span>
-                <div className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-2xl border border-stone-700 bg-stone-900">
-                  {preview ? (
-                    <img src={preview} alt="추모 사진 미리보기" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-sm text-stone-500">사진을 선택해 주세요</span>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                    onChange={(event) => pickPhoto(event.target.files?.[0])}
-                  />
-                </div>
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm text-stone-300">아이의 이름</span>
-                <input
-                  value={petName}
-                  maxLength={20}
-                  onChange={(event) => setPetName(event.target.value)}
-                  placeholder="예: 보리"
-                  className="w-full rounded-xl border border-stone-700 bg-stone-900 px-4 py-3 text-base outline-none focus:border-amber-500"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm text-stone-300">남기고 싶은 말</span>
-                <textarea
-                  value={message}
-                  maxLength={500}
-                  rows={7}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder="함께한 시간, 하고 싶었던 말을 적어 주세요."
-                  className="w-full resize-none rounded-xl border border-stone-700 bg-stone-900 px-4 py-3 text-base leading-7 outline-none focus:border-amber-500"
-                />
-                <span className="mt-1 block text-right text-xs text-stone-500">{message.length} / 500</span>
-              </label>
-
-              {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-
-              <button type="button" disabled={!preview || !petName.trim() || busy}
-                onClick={() => { setError(''); setPhase('preview'); }}
-                className="w-full rounded-full bg-white/10 px-6 py-3 disabled:opacity-40">
-                추모관 미리보기
-              </button>
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full rounded-full bg-amber-200 px-6 py-4 text-base font-medium text-stone-900 disabled:cursor-wait disabled:opacity-60"
-              >
-                {busy ? '추모관을 여는 중입니다...' : '추모관 열기'}
-              </button>
-
-              <p className="text-center text-xs leading-5 text-stone-500">
-                사진은 서버에 저장되며, 추모관을 지우면 사진과 남긴 말이 함께 삭제됩니다.
+        {phase === 'login' ? (
+          <section className="mdl-memorial-login">
+            <div className="mdl-memorial-login-copy">
+              <h3>휴대폰으로 관리하기</h3>
+              <p>
+                추모관은 휴대폰 인증으로 관리합니다. 가족에게 보내는 공유 링크는 로그인 없이 열립니다.
               </p>
-            </form>
-          </div>
-        ) : null}
-
-        {phase === 'preview' && (
-          <>
-            <MemorialCanvas memorial={{ photoUrl: preview, petName: petName.trim(), message }} />
-            <div className="absolute inset-x-0 bottom-0 z-30 space-y-3 bg-black/75 p-5 text-center">
-              <p>미리보기 · 사진은 아직 저장되지 않았습니다.</p>
-              {error && <p role="alert" className="text-rose-300">{error}</p>}
-              <div className="flex flex-wrap justify-center gap-3">
-                <button type="button" disabled={busy} onClick={() => setPhase('form')}
-                  className="rounded-full bg-white/10 px-5 py-3">수정하기</button>
-                <button type="button" disabled={busy} onClick={() => void submit()}
-                  className="rounded-full bg-amber-200 px-5 py-3 text-stone-900">
-                  {busy ? '저장 중입니다…' : '추모관 열기'}
-                </button>
-              </div>
+              <ul>
+                <li>한 마리당 한 방, 사진 최대 5장</li>
+                <li>먼저 무료로 미리보기</li>
+                <li>결제 후 가족 공유 링크가 열립니다</li>
+              </ul>
             </div>
-          </>
-        )}
-
-        {phase === 'inside' && memorial ? (
-          <>
-            <MemorialCanvas memorial={memorial} onShare={share} />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-5 pb-6 pt-16">
-              <div className="pointer-events-auto mx-auto max-w-md text-center">
-                <p className="text-[10px] tracking-[0.22em] text-amber-200/70">무지개다리 추모관</p>
-                <h3 className="mt-2 text-xl font-medium text-amber-50">{memorial.petName}</h3>
-                <p className="mt-2 max-h-[3.4rem] overflow-hidden text-sm leading-6 text-stone-300">
-                  {String(memorial.message || '').slice(0, 90)}
-                </p>
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                  <button type="button" onClick={share} className="rounded-full bg-amber-200 px-5 py-3 text-sm font-medium text-stone-900">
-                    가족에게 공유하기
-                  </button>
-                  <button type="button" onClick={remove} disabled={busy} className="rounded-full bg-white/10 px-5 py-3 text-sm text-stone-300 disabled:opacity-50">
-                    추모관 지우기
+            <div className="mdl-memorial-auth">
+              <label>
+                <span>휴대폰 번호</span>
+                <div className="mdl-memorial-phone-row">
+                  <input
+                    inputMode="numeric"
+                    autoComplete="tel"
+                    placeholder="01012345678"
+                    value={phone}
+                    onChange={(event) => setPhone(normalizePhone(event.target.value).slice(0, 11))}
+                  />
+                  <button type="button" onClick={sendCode} disabled={busy || cooldown > 0}>
+                    {cooldown > 0 ? `${cooldown}초` : '인증번호 받기'}
                   </button>
                 </div>
-                <p className="mt-3 text-[11px] text-stone-400">사진을 눌러도 공유할 수 있습니다.</p>
-              </div>
+              </label>
+              <label>
+                <span>인증번호 6자리</span>
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="000000"
+                  value={code}
+                  onChange={(event) => setCode(normalizePhone(event.target.value).slice(0, 6))}
+                />
+              </label>
+              <button type="button" className="mdl-memorial-primary" onClick={verify} disabled={busy}>
+                인증하고 들어가기
+              </button>
+              <ErrorText error={error} />
+              {notice ? <p className="mdl-memorial-notice">{notice}</p> : null}
             </div>
-            {error ? (
-              <p className="absolute inset-x-5 bottom-32 z-40 text-center text-sm text-rose-300">{error}</p>
-            ) : null}
-          </>
-        ) : null}
+          </section>
+        ) : (
+          <div className="mdl-memorial-body">
+            <aside className="mdl-memorial-side">
+              <div className="mdl-memorial-side-head">
+                <strong>내 추모관</strong>
+                <button type="button" onClick={logout}>로그아웃</button>
+              </div>
 
-        {toast ? (
-          <div className="absolute inset-x-5 top-20 z-50 mx-auto max-w-md rounded-xl bg-stone-800/95 px-4 py-3 text-center text-sm text-stone-100">
-            {toast}
+              <div className="mdl-memorial-room-list">
+                {rooms.map((room) => (
+                  <button
+                    type="button"
+                    key={room.id}
+                    className={`mdl-memorial-room-card ${selected?.id === room.id ? 'is-active' : ''}`}
+                    onClick={() => openRoom(room)}
+                  >
+                    <span className="mdl-memorial-room-thumb">
+                      {room.coverPhotoUrl ? <img src={room.coverPhotoUrl} alt="" /> : <span>+</span>}
+                    </span>
+                    <span className="mdl-memorial-room-meta">
+                      <strong>{room.petName}</strong>
+                      <small>{STATUS[room.status]?.label || room.status} · 사진 {room.photos.length}장</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <button type="button" className="mdl-memorial-new" onClick={() => setCreating(true)}>
+                + 새 추모관 만들기
+              </button>
+              <p className="mdl-memorial-fine">
+                한 마리당 한 방 · 연 {won(config?.priceWon || 9900)} · 사진 최대 {config?.maxPhotos || MAX_PHOTOS}장
+              </p>
+            </aside>
+
+            <main className="mdl-memorial-main">
+              {creating ? (
+                <section className="mdl-memorial-create">
+                  <h3>새 추모관</h3>
+                  <p>먼저 아이의 이름과 남기고 싶은 말을 적어 주세요. 사진은 만든 뒤에 올릴 수 있습니다.</p>
+                  <label>
+                    <span>아이의 이름</span>
+                    <input
+                      maxLength={20}
+                      placeholder="예: 초롱이"
+                      value={newPetName}
+                      onChange={(event) => setNewPetName(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>남기고 싶은 말</span>
+                    <textarea
+                      rows={5}
+                      maxLength={500}
+                      placeholder="우리 곁에 오래 머물러 줘서 고마워."
+                      value={newMessage}
+                      onChange={(event) => setNewMessage(event.target.value)}
+                    />
+                  </label>
+                  <div className="mdl-memorial-actions">
+                    <button type="button" className="mdl-memorial-primary" onClick={createRoom} disabled={busy}>
+                      무료 미리보기 만들기
+                    </button>
+                    <button type="button" onClick={() => setCreating(false)} disabled={busy}>
+                      취소
+                    </button>
+                  </div>
+                  <ErrorText error={error} />
+                </section>
+              ) : !selected ? (
+                <section className="mdl-memorial-empty-state">
+                  <h3>사랑하는 아이를 기억하는 방</h3>
+                  <p>왼쪽에서 추모관을 고르거나 새 추모관을 만들어 주세요.</p>
+                  <p className="mdl-memorial-fine">
+                    결제 전에는 무료 미리보기로 사진과 글을 확인할 수 있습니다.
+                  </p>
+                </section>
+              ) : (
+                <section className="mdl-memorial-workspace">
+                  <div className="mdl-memorial-title-row">
+                    <div>
+                      <p className="mdl-memorial-kicker">무지개다리 추모관</p>
+                      <h3>{selected.petName}</h3>
+                    </div>
+                    <span className={`mdl-memorial-status is-${statusInfo?.tone || 'muted'}`}>
+                      {statusInfo?.label || selected.status}
+                    </span>
+                  </div>
+
+                  {selected.status === 'preview' ? (
+                    <div className="mdl-memorial-banner is-preview">
+                      <strong>지금은 무료 미리보기입니다.</strong>
+                      <span>결제하면 가족 공유 링크가 열리고, 1년 동안 추모관을 보관합니다.</span>
+                    </div>
+                  ) : null}
+
+                  {['past_due', 'payment_failed'].includes(selected.status) ? (
+                    <div className="mdl-memorial-banner is-danger">
+                      <strong>갱신 결제가 실패했습니다.</strong>
+                      <span>
+                        가족 공유가 잠시 멈췄습니다. {selected.graceUntil ? `${dateText(selected.graceUntil)}까지` : '30일 안에'} 사진을 내려받거나 다시 결제할 수 있습니다.
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {selected.status === 'expired' ? (
+                    <div className="mdl-memorial-banner is-muted">
+                      <strong>이용 기간이 끝났습니다.</strong>
+                      <span>다시 결제하면 새 기간으로 추모관을 열 수 있습니다.</span>
+                    </div>
+                  ) : null}
+
+                  {selected.status === 'canceled' ? (
+                    <div className="mdl-memorial-banner is-muted">
+                      <strong>자동 갱신이 해지되었습니다.</strong>
+                      <span>{dateText(selected.expiresAt)}까지 가족 공유가 유지됩니다.</span>
+                    </div>
+                  ) : null}
+
+                  {canSeeScene ? (
+                    <RainbowMemorialScene room={{ ...selected, photos: loadedPhotos }} />
+                  ) : (
+                    <div className="mdl-memorial-scene-empty">
+                      {selected.photos.length === 0
+                        ? '사진을 올리면 이곳에 액자가 나타납니다.'
+                        : '지금은 추모관이 공개되지 않았습니다. 다시 결제하거나 기간을 확인해 주세요.'}
+                    </div>
+                  )}
+
+                  <div className="mdl-memorial-message">
+                    <span>남긴 말</span>
+                    <p>{selected.message}</p>
+                  </div>
+
+                  <div className="mdl-memorial-photos">
+                    <div className="mdl-memorial-photos-head">
+                      <strong>사진 {selected.photos.length} / {config?.maxPhotos || MAX_PHOTOS}</strong>
+                      {canEdit && selected.photos.length < (config?.maxPhotos || MAX_PHOTOS) ? (
+                        <>
+                          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                            사진 추가
+                          </button>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            hidden
+                            onChange={(event) => uploadPhotos(event.target.files)}
+                          />
+                        </>
+                      ) : null}
+                    </div>
+                    <div className="mdl-memorial-photo-grid">
+                      {selected.photos.map((photo) => (
+                        <div className="mdl-memorial-photo" key={photo.id}>
+                          {loadedPhotos.find(item => item.id === photo.id) && <img src={loadedPhotos.find(item => item.id === photo.id).url} alt={`${selected.petName} 사진`} />}
+                          {canEdit ? (
+                            <button type="button" onClick={() => removePhoto(photo.id)} disabled={busy} aria-label="사진 삭제">
+                              ×
+                            </button>
+                          ) : null}
+                          {selected.ownerAccess ? (
+                            <a href={loadedPhotos.find(item => item.id === photo.id)?.url} download="memorial.jpg">
+                              내려받기
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selected.status === 'preview' && !showPay && (
+                    <p className="mdl-memorial-note">현재 미리보기만 이용할 수 있습니다.</p>
+                  )}
+                  {showPay ? (
+                    <div className="mdl-memorial-paybox">
+                      <div>
+                        <strong>연 {won(config?.priceWon || selected.priceWon || 9900)}</strong>
+                        <p>매년 자동 결제 · 언제든 자동 갱신 해지 가능</p>
+                        <small>
+                          이번 결제 {won(config?.priceWon || selected.priceWon || 9900)} · 다음 결제일은 결제 후 1년 뒤입니다.
+                        </small>
+                      </div>
+                      <button type="button" className="mdl-memorial-primary" onClick={startCheckout} disabled={busy || selected.photos.length < 1}>
+                        {selected.status === 'preview' ? '결제하고 가족과 나누기' : '다시 결제하기'}
+                      </button>
+                      <p className="mdl-memorial-fine">
+                        결제 전에 무료 미리보기로 확인할 수 있습니다. 결제 후 가족 공유 링크가 열립니다.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {showShare ? (
+                    <div className="mdl-memorial-share">
+                      <div>
+                        <strong>가족 공유 링크</strong>
+                        <p>가족은 로그인 없이 이 링크로 추모관을 볼 수 있습니다.</p>
+                      </div>
+                      <div className="mdl-memorial-share-row">
+                        <input readOnly value={selected.shareUrl} onFocus={(event) => event.target.select()} />
+                        <button type="button" onClick={share} disabled={busy}>공유</button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {['active', 'canceled', 'past_due', 'payment_failed'].includes(selected.status) && selected.nextBillingAt ? (
+                    <div className="mdl-memorial-sub-row">
+                      <span>다음 결제일: {dateText(selected.nextBillingAt)}</span>
+                      {selected.autoRenew ? (
+                        <button type="button" onClick={cancelSubscription} disabled={busy}>
+                          자동 갱신 해지
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="mdl-memorial-danger-row">
+                    {canEdit ? (
+                      <button type="button" className="mdl-memorial-danger" onClick={deleteRoom} disabled={busy}>
+                        추모관 삭제
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <ErrorText error={error} />
+                  {notice ? <p className="mdl-memorial-notice">{notice}</p> : null}
+                </section>
+              )}
+            </main>
           </div>
-        ) : null}
+        )}
       </div>
-    </dialog>,
-    document.body
+    </div>
   );
 }
+
+export default RainbowMemorialDialog;

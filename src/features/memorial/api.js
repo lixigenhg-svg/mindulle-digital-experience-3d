@@ -1,120 +1,162 @@
-const API_BASE = (import.meta.env.VITE_MEMORIAL_API_BASE || 'https://mindulle.kr/api/pet').replace(/\/+$/, '');
-const STORAGE_KEY = 'mdl_pet_memorial_v1';
+const RAW_BASE =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MINDOLLE_API_BASE) ||
+  'https://mindulle.kr';
 
-export class MemorialApiError extends Error {
-  constructor(message, code, status) {
+export const PET_API_BASE = String(RAW_BASE).replace(/\/+$/, '');
+const TOKEN_KEY = 'mindulle.rainbow.ownerToken';
+
+export class PetApiError extends Error {
+  constructor(message, { status = 0, code = 'PET_ERROR', payload = null } = {}) {
     super(message);
-    this.name = 'MemorialApiError';
-    this.code = code || 'MEMORIAL_API_ERROR';
-    this.status = status || 0;
+    this.name = 'PetApiError';
+    this.status = status;
+    this.code = code;
+    this.payload = payload;
   }
 }
 
-async function request(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (options.body) headers['content-type'] = 'application/json';
-
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new MemorialApiError(
-      data.error || '추모관 요청을 처리하지 못했습니다.',
-      data.code,
-      response.status
-    );
-  }
-  return data;
-}
-
-export async function createMemorial({ petName, message, imageDataUrl }) {
-  return request('/memorials', {
-    method: 'POST',
-    body: JSON.stringify({ petName, message, imageDataUrl })
-  });
-}
-
-export async function getMemorial(publicId) {
-  return request(`/memorials/${encodeURIComponent(publicId)}`);
-}
-
-export async function deleteMemorial(publicId, ownerToken) {
-  return request(`/memorials/${encodeURIComponent(publicId)}`, {
-    method: 'DELETE',
-    headers: { authorization: `Bearer ${ownerToken}` }
-  });
-}
-
-export function saveMemorial({ publicId, ownerToken }) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ publicId, ownerToken }));
-}
-
-export function loadSavedMemorial() {
+export function getOwnerToken() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.publicId || !parsed?.ownerToken) return null;
-    return parsed;
+    return localStorage.getItem(TOKEN_KEY) || '';
   } catch {
-    return null;
+    return '';
   }
 }
 
-export function clearSavedMemorial() {
-  localStorage.removeItem(STORAGE_KEY);
-}
-
-const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
-function loadImage(file) {
-  const objectUrl = URL.createObjectURL(file);
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve({ image, objectUrl });
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new MemorialApiError('사진을 읽지 못했습니다.', 'PET_PHOTO_READ_FAILED', 0));
-    };
-    image.src = objectUrl;
-  });
-}
-
-export async function compressPhoto(file) {
-  if (!(file instanceof File)) {
-    throw new MemorialApiError('사진 파일을 선택해 주세요.', 'PET_PHOTO_REQUIRED', 400);
-  }
-  if (!ALLOWED_TYPES.has(file.type)) {
-    throw new MemorialApiError('JPG, PNG, WebP 사진만 올릴 수 있습니다.', 'PET_PHOTO_TYPE', 400);
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    throw new MemorialApiError('사진은 10MB 이하만 올릴 수 있습니다.', 'PET_PHOTO_SIZE', 400);
-  }
-
-  const { image, objectUrl } = await loadImage(file);
+export function setOwnerToken(token) {
   try {
-    const maxSide = 1200;
-    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) throw new MemorialApiError('사진을 처리하지 못했습니다.', 'PET_PHOTO_CANVAS', 500);
-
-    context.fillStyle = '#f7f1e6';
-    context.fillRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
-
-    let dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-    if (dataUrl.length > 1_200_000) dataUrl = canvas.toDataURL('image/jpeg', 0.68);
-    return dataUrl;
-  } finally {
-    URL.revokeObjectURL(objectUrl);
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
   }
+}
+
+export function clearOwnerToken() {
+  setOwnerToken('');
+}
+
+async function request(path, { method = 'GET', body, token = getOwnerToken() } = {}) {
+  const headers = {};
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  if (token) headers.authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${PET_API_BASE}${path}`, {
+    method,
+    headers,
+    credentials: 'omit',
+    cache: 'no-store',
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const text = await response.text();
+  let payload = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { error: text };
+    }
+  }
+
+  if (!response.ok) {
+    throw new PetApiError(payload?.error || '요청을 처리하지 못했습니다.', {
+      status: response.status,
+      code: payload?.code || 'PET_ERROR',
+      payload,
+    });
+  }
+  return payload;
+}
+
+export const petApi = {
+  config() {
+    return request('/api/pet/config');
+  },
+
+  sendCode(phone) {
+    return request('/api/pet/auth/send-code', {
+      method: 'POST',
+      body: { phone },
+      token: '',
+    });
+  },
+
+  verify(phone, code) {
+    return request('/api/pet/auth/verify', {
+      method: 'POST',
+      body: { phone, code },
+      token: '',
+    });
+  },
+
+  listRooms() {
+    return request('/api/pet/rooms');
+  },
+
+  createRoom({ petName, message }) {
+    return request('/api/pet/rooms', {
+      method: 'POST',
+      body: { petName, message },
+    });
+  },
+
+  getRoom(publicId) {
+    return request(`/api/pet/rooms/${encodeURIComponent(publicId)}`);
+  },
+
+  addPhoto(roomId, imageDataUrl) {
+    return request(`/api/pet/rooms/${encodeURIComponent(roomId)}/photos`, {
+      method: 'POST',
+      body: { imageDataUrl },
+    });
+  },
+
+  deletePhoto(roomId, photoId) {
+    return request(
+      `/api/pet/rooms/${encodeURIComponent(roomId)}/photos/${encodeURIComponent(photoId)}`,
+      { method: 'DELETE' }
+    );
+  },
+
+  checkout(roomId) {
+    return request(`/api/pet/rooms/${encodeURIComponent(roomId)}/checkout`, {
+      method: 'POST',
+      body: {},
+    });
+  },
+
+  subscription(roomId) {
+    return request(`/api/pet/rooms/${encodeURIComponent(roomId)}/subscription`);
+  },
+
+  cancel(roomId) {
+    return request(`/api/pet/rooms/${encodeURIComponent(roomId)}/cancel`, {
+      method: 'POST',
+      body: {},
+    });
+  },
+
+  deleteRoom(roomId) {
+    return request(`/api/pet/rooms/${encodeURIComponent(roomId)}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+export async function loadMemorialPhoto(url, { signal, download = false } = {}) {
+  const address = new URL(url);
+  if (address.origin !== new URL(PET_API_BASE).origin || !address.pathname.startsWith('/api/pet/rooms/')) {
+    throw new Error('사진 주소를 확인할 수 없습니다.');
+  }
+  if (download) address.searchParams.set('download', '1');
+  const token = getOwnerToken();
+  const response = await fetch(address, {
+    signal, credentials: 'omit', cache: 'no-store',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) {
+    throw new Error('사진을 불러오지 못했습니다.');
+  }
+  return response.blob();
 }
