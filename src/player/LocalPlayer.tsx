@@ -1,3 +1,4 @@
+import { planWalk } from './walkRoute';
 /**
  * LocalPlayer.tsx —— 本地玩家：位移、朝向、第三人称相机、输入（点地移动 / 拖拽旋转 / 双指缩放）
  * 动作状态来自 ActionMachine；位置快照通过 onMove 上交，由 App 按 80ms 节流上报。
@@ -257,13 +258,24 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
   };
   /* ---------- 键盘 ---------- */
   const walkTolerance = useRef(0.15);
+  const waypoints = useRef<THREE.Vector3[]>([]);
+  const setWalkTarget = (goal: THREE.Vector3, tolerance: number) => {
+    const s = state.current;
+    clampRoom(goal);
+    const route = privateMode ? [goal] : planWalk(s.pos, goal,
+      [...OBSTACLES, ...exteriorObstacles, ...treeObstacles], PLAYER_R, {
+        minX: -BOUNDS, maxX: BOUNDS, minZ: BOUNDS_Z_MIN, maxZ: BOUNDS_Z_MAX,
+      });
+    const points = route.map(point => new THREE.Vector3(point.x, 0, point.z));
+    s.target = points.shift() ?? null;
+    waypoints.current = points;
+    walkTolerance.current = tolerance;
+  };
   const turn = useRef<{ from: number; delta: number; start: number; duration: number } | null>(null);
   // 供外部调用：让玩家自动走到某点（上香等场景使用）
   useEffect(() => {
     (window as any).__MD_WALK__ = (x: number, z: number, tolerance = 0.15) => {
-      const s = state.current;
-      s.target = new THREE.Vector3(x, 0, z);
-      walkTolerance.current = tolerance;
+      setWalkTarget(new THREE.Vector3(x, 0, z), tolerance);
     };
     // 运镜：上香特写时把镜头拉近并绕到侧面
     (window as any).__MD_CAM__ = (dist: number, pitch: number, yaw: number) => {
@@ -385,11 +397,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
       if (pointers.size < 2) { pinchStart = 0; pinchDistStart = 0; }
       if (dragMoved <= 6 && pointers.size === 0) {
         const p = groundPoint(e.clientX, e.clientY);
-        if (p) {
-          clampRoom(p);
-          state.current.target = p;
-          walkTolerance.current = 0.15;
-        }
+        if (p) setWalkTarget(p, 0.15);
       }
     };
 
@@ -498,7 +506,16 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
         } else if (s.target) {
           move.subVectors(s.target, s.pos);
           move.y = 0;
-          if (move.length() < walkTolerance.current) { s.target = null; move.set(0, 0, 0); }
+          const tolerance = waypoints.current.length ? 0.015 : walkTolerance.current;
+          if (move.length() < tolerance) {
+            s.target = waypoints.current.shift() ?? null;
+            if (s.target) {
+              move.subVectors(s.target, s.pos);
+              move.y = 0;
+            } else {
+              move.set(0, 0, 0);
+            }
+          }
         }
       }
     }
