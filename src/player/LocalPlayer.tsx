@@ -12,7 +12,7 @@ import { exteriorObstacles, treeObstacles } from '../scene/Exterior';
 import { stick } from './input';
 import { sharedAudio } from '../audio';
 import { playerMotion } from '../avatar/animState';
-import { SEATS, SEAT_RADIUS } from './seats';
+import { nearestSeat, type Seat } from './seats';
 import type { ActionMachine } from '../actions';
 import FigureAvatar from '../avatar/FigureAvatar';
 import PaidAura from '../scene/PaidAura';
@@ -194,6 +194,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
   // 坐在什么上面（茶垫 / 长凳 / 蒲团），传给姿态函数决定坐姿细节
   const [seatKindState, setSeatKindState] = useState<'floor' | 'tea' | 'bench'>('floor');
   const seatKindRef = useRef<'floor' | 'tea' | 'bench'>('floor');
+  const activeBench = useRef<Seat | null>(null);
   const floorRef = useRef<THREE.Mesh>(null);
 
   // 动作状态机是普通类，改 state 不会触发重渲染；订阅后动作切换才能推给模型
@@ -598,18 +599,17 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     let targetY = kneel ? CUSHION_Y : 0;
     if (machine.state === 'sitting') {
       // 坐下时找最近的可坐位置（茶室坐垫 / 庭院长凳），缓慢吸附过去并转向
-      let best: (typeof SEATS)[number] | null = null;
-      let bestD = SEAT_RADIUS;
-      for (const st of SEATS) {
-        const dd = Math.hypot(st.x - s.pos.x, st.z - s.pos.z);
-        if (dd < bestD) { bestD = dd; best = st; }
-      }
+      const best = activeBench.current ?? nearestSeat(s.pos.x, s.pos.z);
       const wantKind = best ? best.kind : 'floor';
       if (wantKind !== seatKindRef.current) { seatKindRef.current = wantKind; setSeatKindState(wantKind); }
       if (best) {
         const k = Math.min(1, dt * 7);
-        s.pos.x += (best.x - s.pos.x) * k;
-        s.pos.z += (best.z - s.pos.z) * k;
+        const bench = best.kind === 'bench';
+        if (bench) activeBench.current = best;
+        const forwardOffset = bench ? 0.16 : 0;
+        const rot = best.rot ?? 0;
+        s.pos.x += (best.x - Math.sin(rot) * forwardOffset - s.pos.x) * k;
+        s.pos.z += (best.z - Math.cos(rot) * forwardOffset - s.pos.z) * k;
         if (best.rot !== undefined) {
           let diff = best.rot - s.facing;
           while (diff > Math.PI) diff -= Math.PI * 2;
@@ -617,12 +617,21 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
           s.facing += diff * Math.min(1, dt * 5);
         }
         playerMotion.seatKind = best.kind;
-        targetY = best.y;
+        targetY = bench ? 0 : best.y;
       } else {
         playerMotion.seatKind = 'floor';
         targetY = CUSHION_Y;
       }
     } else {
+      const bench = activeBench.current;
+      if (bench) {
+        activeBench.current = null;
+        const facing = bench.rot ?? s.facing;
+        const clearance = 0.76;
+        s.pos.x = bench.x - Math.sin(facing) * clearance;
+        s.pos.z = bench.z - Math.cos(facing) * clearance;
+        clampRoom(s.pos);
+      }
       playerMotion.seatKind = 'floor';
       if (seatKindRef.current !== 'floor') { seatKindRef.current = 'floor'; setSeatKindState('floor'); }
     }

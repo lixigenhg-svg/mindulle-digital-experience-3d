@@ -360,6 +360,7 @@ export default function SkinAvatar({
   const original = useGLTF(RIG_AVATAR_URL);
   const model = useGLTF(MONK_URL);
   const offset = useRef<THREE.Group>(null);
+  const benchBlend = useRef(0);
   const previous = useRef<Props['action']>();
   const delta = useMemo(() => new THREE.Quaternion(), []);
   const euler = useMemo(() => new THREE.Euler(), []);
@@ -545,10 +546,27 @@ export default function SkinAvatar({
     const stride = Math.sin(phase);
     const bob = walking ? -WALK_DROP : 0;
     const seated = currentAction === 'sitting';
-    const y = (seated ? -0.42 : 0) + bob;
-    group.position.y += (y - group.position.y) * Math.min(1, dt * 10);
+    const onBench = seated && (live ? playerMotion.seatKind : seatKind) === 'bench';
+    benchBlend.current += (Number(onBench) - benchBlend.current) * Math.min(1, dt * 8);
+    const benchAmount = benchBlend.current;
+    const floorSeated = seated && !onBench;
+    const y = (floorSeated ? -0.42 : 0) + bob;
+    if (!ritual && !walking && benchAmount > 0.001) {
+      for (const [thigh, shin, foot] of avatar.legs) {
+        thigh.rotation.set(-Math.PI / 2 * benchAmount, 0, 0);
+        shin.rotation.set(Math.PI / 2 * benchAmount, 0, 0);
+        foot.rotation.set(0, 0, 0);
+      }
+    }
+    if (!ritual && !walking && benchAmount > 0.001) {
+      // Lower the hips with the knee bend while retaining clearance above the seat.
+      const scale = height / MONK_HEIGHT;
+      group.position.y = -LEG_LENGTH * scale * (1 - Math.cos(Math.PI / 2 * benchAmount)) + 0.060 * benchAmount;
+    } else {
+      group.position.y += (y - group.position.y) * Math.min(1, dt * 10);
+    }
     group.position.x += ((walking ? stride * 0.012 : 0) - group.position.x) * Math.min(1, dt * 8);
-    group.scale.y += ((seated ? 0.86 : 1) - group.scale.y) * Math.min(1, dt * 8);
+    group.scale.y += ((floorSeated ? 0.86 : 1) - group.scale.y) * Math.min(1, dt * 8);
   });
 
   return (
