@@ -28,6 +28,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
   const [access, setAccess] = useState<Access>();
   const [entered, setEntered] = useState(false);
   const [windowView, setWindowView] = useState(false);
+  const [snowy, setSnowy] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sound, setSound] = useState(false);
@@ -155,7 +156,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
       className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none bg-[#101726] text-white">
       <div className="absolute inset-0">
         <Suspense fallback={null}>
-          <RainTeaScene key={entered ? 'inside' : 'preview'} purchased={entered && (access?.entitled === true || Boolean(invite && room))} guestPresent={guestPresent} windowView={windowView} />
+          <RainTeaScene key={entered ? 'inside' : 'preview'} purchased={entered && (access?.entitled === true || Boolean(invite && room))} guestPresent={guestPresent} windowView={windowView} snowy={snowy} />
         </Suspense>
       </div>
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#101726] via-transparent to-[#101726]/70" />
@@ -164,14 +165,18 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
         <button type="button" onClick={onClose} className="rounded-full bg-black/55 px-4 py-2">돌아가기</button>
       </header>
       <div className="absolute inset-x-0 bottom-0 space-y-3 p-6 text-center">
-        {!entered && <p>처마 밖으로 내리는 비를 바라보며 따뜻한 차 한 잔을 마셔 보세요.</p>}
+        {!entered && <p>{snowy ? '처마 밖으로 내리는 눈을 바라보며 따뜻한 차 한 잔을 마셔 보세요.' : '처마 밖으로 내리는 비를 바라보며 따뜻한 차 한 잔을 마셔 보세요.'}</p>}
         {error && <p role="status">{error}</p>}
         {entered && room && <p aria-live="polite">{guestPresent ? '함께 차를 마시고 있어요' : '친구를 기다리는 중'}</p>}
         {entered && shareUrl && <input aria-label="친구 초대 링크" value={shareUrl} readOnly
           onFocus={event => event.currentTarget.select()}
           className="w-full max-w-md rounded-lg bg-slate-800 px-3 py-2 text-sm" />}
         <div className="flex flex-wrap justify-center gap-3">
-          <button type="button" aria-pressed={sound} onClick={toggleSound} className="rounded-full bg-white/15 px-4 py-2">빗소리 {sound ? '끄기' : '듣기'}</button>
+          <button type="button" aria-pressed={snowy} onClick={() => {
+            if (!snowy && audio.current) toggleSound();
+            setSnowy(value => !value);
+          }} className="rounded-full bg-white/15 px-4 py-2">{snowy ? '비 보기' : '눈 보기'}</button>
+          {!snowy && <button type="button" aria-pressed={sound} onClick={toggleSound} className="rounded-full bg-white/15 px-4 py-2">빗소리 {sound ? '끄기' : '듣기'}</button>}
           {entered && (
             <button type="button" onClick={() => setWindowView(view => !view)}
               className="rounded-full bg-white/15 px-4 py-2">

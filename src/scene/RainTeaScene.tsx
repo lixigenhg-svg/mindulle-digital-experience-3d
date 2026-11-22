@@ -35,6 +35,37 @@ function Rain() {
 }
 
 
+function Snow() {
+  const snow = useRef<THREE.Points>(null);
+  const positions = useMemo(() => {
+    const points = new Float32Array(720);
+    for (let i = 0; i < points.length / 3; i++) {
+      points[i * 3] = Math.sin(i * 131.73) * 10;
+      points[i * 3 + 1] = (i * 0.731) % 8;
+      points[i * 3 + 2] = (i % 3 === 0 ? 1 : -1) * (2.65 + (i * 0.317) % 14);
+    }
+    return points;
+  }, []);
+  useFrame(({ clock }, dt) => {
+    const attribute = snow.current?.geometry.getAttribute('position');
+    if (!attribute) return;
+    const step = Math.min(dt, 0.05);
+    for (let i = 0; i < attribute.count; i++) {
+      attribute.setX(i, attribute.getX(i) + Math.sin(clock.elapsedTime * 1.5 + i) * step * 0.24);
+      attribute.setY(i, (attribute.getY(i) - (0.32 + (i % 7) * 0.07) * step + 8) % 8);
+    }
+    attribute.needsUpdate = true;
+  });
+  return (
+    <points ref={snow} frustumCulled={false}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} usage={THREE.DynamicDrawUsage} />
+      </bufferGeometry>
+      <pointsMaterial color="#e6efff" size={0.047} transparent opacity={0.8} depthWrite={false} />
+    </points>
+  );
+}
+
 const TABLE_VIEW = new THREE.Vector3(0, 1.73, 2.45);
 const WINDOW_VIEW = new THREE.Vector3(0.48, 1.45, 0.85);
 const TABLE_FOCUS = new THREE.Vector3(0, 0.9, -0.32);
@@ -81,8 +112,8 @@ function TeaSteam() {
   );
 }
 
-export default function RainTeaScene({ purchased, guestPresent, windowView }: {
-  purchased: boolean; guestPresent: boolean; windowView: boolean;
+export default function RainTeaScene({ purchased, guestPresent, windowView, snowy }: {
+  purchased: boolean; guestPresent: boolean; windowView: boolean; snowy: boolean;
 }) {
   return (
     <Canvas
@@ -97,7 +128,7 @@ export default function RainTeaScene({ purchased, guestPresent, windowView }: {
       <pointLight position={[0, 2.2, 0.75]} color="#ffb962" intensity={23} distance={7} />
       <mesh rotation-x={-Math.PI / 2} position-y={-0.035}>
         <planeGeometry args={[60, 60]} />
-        <meshStandardMaterial color="#293635" roughness={0.68} />
+        <meshStandardMaterial color={snowy ? "#71808c" : "#293635"} roughness={0.68} />
       </mesh>
       {[[-4, 5], [3.5, 7], [-6, 10], [1, 12], [6, 13]].map(([x, z], i) => (
         <group key={x} position={[x, 0, -z]} scale={1 + (i % 3) * 0.24}>
@@ -114,7 +145,7 @@ export default function RainTeaScene({ purchased, guestPresent, windowView }: {
         </group>
       ))}
       <TeaHouse position={[0, 0, 0]} openView />
-      <Rain />
+      {snowy ? <Snow /> : <Rain />}
       {purchased && <>
         <RoomCamera windowView={windowView} />
         <TeaSteam />
