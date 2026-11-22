@@ -27,6 +27,10 @@ function rainSound() {
 }
 
 export default function RainTea({ invite, onClose }: { invite?: string; onClose: () => void }) {
+  const [recoveryEnabled, setRecoveryEnabled] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [recovering, setRecovering] = useState(false);
   const [access, setAccess] = useState<Access>();
   const [subscription, setSubscription] = useState<Subscription>();
   const [canceling, setCanceling] = useState(false);
@@ -161,6 +165,51 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
     }
   }
 
+  useEffect(() => {
+    if (invite) return;
+    const controller = new AbortController();
+    rainTeaRequest<{ enabled: boolean }>('/recovery', { signal: controller.signal })
+      .then(result => setRecoveryEnabled(result.enabled === true))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [invite]);
+
+  async function recoverTicket() {
+    if (recovering) return;
+    const issue = access?.entitled === true;
+    const code = recoveryCode.trim();
+    if (!issue && !/^[A-Za-z0-9_-]{22}$/.test(code)) {
+      setError('복구 코드를 확인해 주세요.');
+      return;
+    }
+    setRecovering(true);
+    setError('');
+    try {
+      const result = await rainTeaRequest<{ code?: string; memberToken?: string }>(
+        issue ? '/recovery/issue' : '/recovery/redeem',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(issue ? {} : { code }) },
+      );
+      if (issue && result.code) {
+        setRecoveryCode(result.code);
+        setRecoveryOpen(true);
+      } else if (!issue && result.memberToken) {
+        rememberRainTeaToken(result.memberToken);
+        const restored = await rainTeaRequest<Access & { roomsEnabled?: boolean }>('/access');
+        if (!restored.entitled) throw new Error();
+        setAccess(restored);
+        setRoomsEnabled(restored.roomsEnabled === true);
+        setRecoveryCode('');
+        setRecoveryOpen(false);
+      } else {
+        throw new Error();
+      }
+    } catch {
+      setError(issue ? '복구 코드를 만들지 못했습니다.' : '유효한 복구 코드가 아닙니다. 새 코드를 받아 주세요.');
+    } finally {
+      setRecovering(false);
+    }
+  }
+
   async function buy() {
     if (!endpoint || !access?.available || loading) return;
     setLoading(true);
@@ -221,6 +270,19 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
         {!entered && subscription?.autoRenew && subscription.nextBillingAt && (
           <p className="text-sm">다음 자동결제 · {new Date(subscription.nextBillingAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })} · {subscription.priceWon.toLocaleString('ko-KR')}원</p>
         )}
+        {recoveryEnabled && recoveryOpen && (
+          <div className="mx-auto max-w-md space-y-2 rounded-xl bg-slate-900/95 p-3">
+            <p>{access?.entitled ? '복구 코드는 5분 동안 한 번만 사용할 수 있습니다.' : '결제한 기기에서 받은 복구 코드를 입력해 주세요.'}</p>
+            <input aria-label="이용권 복구 코드" value={recoveryCode} readOnly={access?.entitled === true}
+              autoComplete="off" autoCapitalize="none" spellCheck={false}
+              onFocus={event => { if (access?.entitled) event.currentTarget.select(); }}
+              onChange={event => setRecoveryCode(event.target.value)}
+              className="w-full rounded-lg bg-slate-800 px-3 py-2 text-center" />
+            {access?.entitled
+              ? <button type="button" onClick={() => void navigator.clipboard?.writeText(recoveryCode).catch(() => setError('코드를 선택해 복사해 주세요.'))}>코드 복사</button>
+              : <button type="button" disabled={recovering} onClick={() => void recoverTicket()}>이용권 복구</button>}
+          </div>
+        )}
         {entered && room && <p aria-live="polite">{guestPresent ? '함께 차를 마시고 있어요' : '친구를 기다리는 중'}</p>}
         {entered && shareUrl && <input aria-label="친구 초대 링크" value={shareUrl} readOnly
           onFocus={event => event.currentTarget.select()}
@@ -248,6 +310,14 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
           {!entered && subscription?.autoRenew && (
             <button type="button" disabled={canceling} onClick={() => void cancelRenewal()}
               className="rounded-full bg-white/15 px-4 py-2">자동결제 해지</button>
+          )}
+          {recoveryEnabled && !invite && access && (
+            <button type="button" disabled={recovering || loading} onClick={() => {
+              if (access.entitled && !recoveryOpen) void recoverTicket();
+              else setRecoveryOpen(open => !open);
+            }} className="rounded-full bg-white/15 px-4 py-2">
+              {recoveryOpen ? '복구 닫기' : access.entitled ? '다른 기기에서 이용하기' : '구매한 이용권 복구'}
+            </button>
           )}
           {!entered && access?.entitled === true && (
             <button type="button" onClick={() => setEntered(true)} className="rounded-full bg-amber-200 px-4 py-2 text-stone-900">찻자리 입장</button>
