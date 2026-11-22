@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { rainTeaRequest, rainTeaEndpoint as endpoint, rememberRainTeaToken } from '../api/rainTea';
 
 const RainTeaScene = lazy(() => import('../scene/RainTeaScene'));
-const endpoint = import.meta.env.VITE_RAIN_TEA_API?.replace(/\/$/, '');
 
+type Subscription = { autoRenew: boolean; status: string; nextBillingAt: string | null; priceWon: number };
+type Checkout = { checkoutUrl: string; memberToken?: string; alreadyEntitled?: boolean };
 type Access = { available: boolean; entitled: boolean; priceWon?: number };
 const invitePattern = /^[A-Za-z0-9_-]{22,128}$/;
 
@@ -26,6 +28,10 @@ function rainSound() {
 
 export default function RainTea({ invite, onClose }: { invite?: string; onClose: () => void }) {
   const [access, setAccess] = useState<Access>();
+  const [subscription, setSubscription] = useState<Subscription>();
+  const [canceling, setCanceling] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [roomsEnabled, setRoomsEnabled] = useState(false);
   const [entered, setEntered] = useState(false);
   const [windowView, setWindowView] = useState(false);
   const [snowy, setSnowy] = useState(false);
@@ -50,12 +56,11 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
           setEntered(true);
         })
         .catch(() => { if (!abort.signal.aborted) setError('초대가 만료되었거나 찻자리가 가득 찼습니다.'); });
-    } else if (endpoint) {
-      fetch(`${endpoint}/access`, { credentials: 'include', cache: 'no-store', signal: abort.signal })
-        .then(async response => {
-          if (!response.ok) throw new Error();
-          const result: Access = await response.json();
+    } else {
+      rainTeaRequest<Access & { roomsEnabled?: boolean }>('/access', { signal: abort.signal })
+        .then(result => {
           setAccess(result);
+          setRoomsEnabled(result.roomsEnabled === true);
         })
         .catch(() => { if (!abort.signal.aborted) setError('이용권 정보를 불러오지 못했습니다.'); });
     }
@@ -118,16 +123,52 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
     }
   }
 
+  useEffect(() => {
+    if (!access || invite) return;
+    const abort = new AbortController();
+    rainTeaRequest<Subscription>('/subscription', { signal: abort.signal })
+      .then(setSubscription)
+      .catch(() => { if (!abort.signal.aborted) setError('자동결제 정보를 불러오지 못했습니다.'); });
+    return () => abort.abort();
+  }, [access, invite]);
+
+  async function cancelRenewal() {
+    if (canceling || !subscription?.autoRenew) return;
+    if (!window.confirm('자동결제를 해지하시겠어요? 이미 결제한 이용 기간은 그대로 유지됩니다.')) return;
+    setCanceling(true);
+    setError('');
+    try {
+      const result = await rainTeaRequest<{ ok: boolean; autoRenew: boolean; status: string; entitled: boolean }>(
+        '/cancel', { method: 'POST' },
+      );
+      if (result.ok !== true || result.autoRenew !== false) throw new Error();
+      setSubscription({ ...subscription, autoRenew: false, status: result.status, nextBillingAt: null });
+      setAccess(previous => previous && { ...previous, entitled: result.entitled });
+      setNotice('자동결제가 해지되었습니다. 남은 이용 기간은 계속 이용할 수 있습니다.');
+    } catch {
+      setError('자동결제를 해지하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setCanceling(false);
+    }
+  }
+
   async function buy() {
     if (!endpoint || !access?.available || loading) return;
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`${endpoint}/checkout`, { method: 'POST', credentials: 'include' });
-      if (!response.ok) throw new Error();
-      const { checkoutUrl } = await response.json();
-      const url = new URL(checkoutUrl);
-      if (url.protocol !== 'https:') throw new Error();
+      const order = await rainTeaRequest<Checkout>('/checkout', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnUrl: 'https://3d.mindulle.kr/' }),
+      });
+      rememberRainTeaToken(order.memberToken);
+      if (order.alreadyEntitled === true) {
+        setAccess(await rainTeaRequest<Access>('/access'));
+        setLoading(false);
+        return;
+      }
+      const url = new URL(order.checkoutUrl);
+      if (url.origin !== 'https://mindulle.kr' || !url.pathname.startsWith('/tea/pay/')) throw new Error();
       window.location.assign(url);
     } catch {
       setError('결제 페이지를 열지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -167,6 +208,10 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
       <div className="absolute inset-x-0 bottom-0 space-y-3 p-6 text-center">
         {!entered && <p>{snowy ? '처마 밖으로 내리는 눈을 바라보며 따뜻한 차 한 잔을 마셔 보세요.' : '처마 밖으로 내리는 비를 바라보며 따뜻한 차 한 잔을 마셔 보세요.'}</p>}
         {error && <p role="status">{error}</p>}
+        {notice && <p role="status">{notice}</p>}
+        {!entered && subscription?.autoRenew && subscription.nextBillingAt && (
+          <p className="text-sm">다음 자동결제 · {new Date(subscription.nextBillingAt).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })} · {subscription.priceWon.toLocaleString('ko-KR')}원</p>
+        )}
         {entered && room && <p aria-live="polite">{guestPresent ? '함께 차를 마시고 있어요' : '친구를 기다리는 중'}</p>}
         {entered && shareUrl && <input aria-label="친구 초대 링크" value={shareUrl} readOnly
           onFocus={event => event.currentTarget.select()}
@@ -183,7 +228,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
               {windowView ? '찻상 보기' : '창밖 보기'}
             </button>
           )}
-          {entered && access?.entitled === true && (
+          {entered && roomsEnabled && access?.entitled === true && (
             <button type="button" disabled={inviting} onClick={() => {
               if (!shareUrl) void inviteFriend();
               else if (navigator.clipboard) void navigator.clipboard.writeText(shareUrl).catch(() => setError('링크를 선택해 복사해 주세요.'));
@@ -191,12 +236,16 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
               {shareUrl ? '초대 링크 복사' : '친구 초대'}
             </button>
           )}
+          {!entered && subscription?.autoRenew && (
+            <button type="button" disabled={canceling} onClick={() => void cancelRenewal()}
+              className="rounded-full bg-white/15 px-4 py-2">자동결제 해지</button>
+          )}
           {!entered && access?.entitled === true && (
             <button type="button" onClick={() => setEntered(true)} className="rounded-full bg-amber-200 px-4 py-2 text-stone-900">찻자리 입장</button>
           )}
           {!entered && access?.entitled === false && access.available && Number.isSafeInteger(access.priceWon) && access.priceWon! > 0 && (
             <button type="button" disabled={loading} onClick={() => void buy()} className="rounded-full bg-amber-200 px-4 py-2 text-stone-900">
-              {loading ? '결제 페이지 여는 중' : `이용권 구매 · ₩${access.priceWon!.toLocaleString('ko-KR')}`}
+              {loading ? '결제 페이지 여는 중' : `3개월 자동결제 · ${access.priceWon!.toLocaleString('ko-KR')}원`}
             </button>
           )}
           {!entered && (!endpoint || access?.available === false) && !access?.entitled && <p>이용권 판매 준비 중입니다.</p>}

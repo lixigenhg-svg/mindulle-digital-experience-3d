@@ -21,6 +21,7 @@ import { fetchLamps } from './api/lamps';
 import MalaWheel from './ui/MalaWheel';
 import Woodfish from './ui/Woodfish';
 import RainTea from './ui/RainTea';
+import { consumeRainTeaReturn } from './api/rainTea';
 import DonationModal from './ui/DonationModal';
 import ServerModal from './ui/ServerModal';
 import SettingsModal from './ui/SettingsModal';
@@ -178,6 +179,9 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
     /^#rain-tea=([A-Za-z0-9_-]{22,128})$/.exec(location.hash)?.[1]);
   const [rainTeaOpen, setRainTeaOpen] = useState(() => !isPrivate && Boolean(rainTeaInvite));
   const [inTeaHouse, setInTeaHouse] = useState(false);
+  useEffect(() => {
+    if (!isPrivate && consumeRainTeaReturn()) setRainTeaOpen(true);
+  }, [isPrivate]);
 
   function closeRainTea() {
     setRainTeaOpen(false);
