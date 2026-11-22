@@ -18,6 +18,7 @@ import { PALETTES } from './StatueFigure';
 import { CUSHION_ROWS, CUSHION_COLS, CUSHION_RADIUS, CUSHION_FORWARD_OFFSET, HALL_SCALE, INCENSE_BURNER_LOCAL_Z } from '../config';
 import NpcCrowd from './NpcCrowd';
 import TeaHouse from './TeaHouse';
+import { MemorialDoor } from '../features/memorial/RainbowMemorialScene.jsx';
 import WishWall from './WishWall';
 import Offerings from './Offerings';
 
@@ -1231,7 +1232,7 @@ function FruitBowl({ x, z }: { x: number; z: number }) {
   );
 }
 
-export default function ExperienceScene() {
+export default function ExperienceScene({ onOpenMemorial }: { onOpenMemorial: () => void }) {
   // 大殿整体相对缩小：壳体（地/墙/屋顶/柱/台座）绕殿心 (0,0,8) 缩到 0.85，
   // 虚拟人群与体验券木箱保持在原尺度，避免人变小、也让殿和人的比例更贴近原项目。
   const K = HALL_SCALE;
@@ -1271,6 +1272,7 @@ export default function ExperienceScene() {
       <DonationBox position={[4.35, 0, -0.3]} rotationY={-Math.PI / 2} />
       {/* 庭院茶室「안심당」：给访客一个能坐下来停留的地方 */}
       <TeaHouse position={[11.4, 0, 36.6]} rotationY={-0.35} />
+      <MemorialDoor position={[14.7, 0, 36.6]} rotation={[0, -0.35, 0]} onEnter={onOpenMemorial} />
       {/* 殿外祈愿壁：把供灯人的姓名与祈愿挂在墙上 */}
       {/* 祈愿壁：殿门左侧、贴着月台左沿（人从庭院走向殿门时，左手边就是它） */}
       <WishWall position={[-8.6, 0, 29.2]} rotationY={Math.PI / 2} />

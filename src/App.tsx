@@ -21,6 +21,7 @@ import { fetchLamps } from './api/lamps';
 import MalaWheel from './ui/MalaWheel';
 import Woodfish from './ui/Woodfish';
 import RainTea from './ui/RainTea';
+import RainbowMemorialDialog from './features/memorial/RainbowMemorialDialog.jsx';
 import { consumeRainTeaReturn } from './api/rainTea';
 import DonationModal from './ui/DonationModal';
 import ServerModal from './ui/ServerModal';
@@ -179,6 +180,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
     /^#rain-tea=([A-Za-z0-9_-]{22,128})$/.exec(location.hash)?.[1]);
   const [rainTeaOpen, setRainTeaOpen] = useState(() => !isPrivate && Boolean(rainTeaInvite));
   const [inTeaHouse, setInTeaHouse] = useState(false);
+  const [memorialOpen, setMemorialOpen] = useState(false);
   useEffect(() => {
     if (!isPrivate && consumeRainTeaReturn()) setRainTeaOpen(true);
   }, [isPrivate]);
@@ -631,7 +633,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   return (
     <div className="relative h-full w-full">
       <Canvas
-        frameloop={rainTeaOpen ? 'never' : 'always'}
+        frameloop={rainTeaOpen || memorialOpen ? 'never' : 'always'}
         shadows={!IS_HEADLESS}
         dpr={IS_HEADLESS ? 0.6 : [1, IS_MOBILE ? 1 : 1.5]}
         camera={{ fov: 58, near: 0.1, far: 100, position: [0, 2.2, 5.6] }}
@@ -648,7 +650,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           <PrivateSalon mood={privateMood} lampLit={privateLamp} tea={privateTea} />
         ) : (
           <>
-            <ExperienceScene />
+            <ExperienceScene onOpenMemorial={() => { if (entered) setMemorialOpen(true); }} />
             <Exterior />
           </>
         )}
@@ -739,6 +741,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
       )}
 
       {rainTeaOpen && <RainTea invite={rainTeaInvite} onClose={closeRainTea} />}
+      {memorialOpen && <RainbowMemorialDialog open onClose={() => setMemorialOpen(false)} />}
       <DonationModal />
       <ServerModal />
       <SettingsModal engine={audioRef.current} />
