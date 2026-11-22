@@ -628,7 +628,7 @@ html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transi
   transform-origin: 91% 82%;
   transform: translateY(-64%) rotate(20deg);
 }
-.woodfish-struck { animation: woodfish-tap 340ms ease-in-out; }
+.woodfish-struck { animation: woodfish-tap 390ms ease-in-out; }
 .woodfish-controls { display: flex; justify-content: center; gap: 12px; }
 @keyframes woodfish-tap {
   16% { transform: translateY(-64%) rotate(25deg); }

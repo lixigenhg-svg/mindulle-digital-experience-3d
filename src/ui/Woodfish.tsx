@@ -15,13 +15,13 @@ export default function Woodfish({ onStrike, onClose }: Props) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       onStrike();
     } else {
-      soundTimer.current = window.setTimeout(onStrike, 143);
+      soundTimer.current = window.setTimeout(onStrike, 164);
     }
   }, [onStrike]);
   useEffect(() => () => window.clearTimeout(soundTimer.current), []);
   useEffect(() => {
     if (!automatic) return;
-    const timer = window.setInterval(hit, 1150);
+    const timer = window.setInterval(hit, 1350);
     return () => window.clearInterval(timer);
   }, [automatic, hit]);
   useEffect(() => {
