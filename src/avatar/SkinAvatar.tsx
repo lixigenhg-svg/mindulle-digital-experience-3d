@@ -8,6 +8,7 @@ import { playerMotion } from './animState';
 export const RIG_AVATAR_URL = 'assets/models/avatar.glb';
 const MONK_URL = 'assets/models/little-monk-yellow.glb';
 const MONK_HEIGHT = 1.686;
+const INCENSE_DURATION = 6.4;
 
 const BONE_NAMES = [
   'hips', 'spine', 'chest', 'neck', 'head',
@@ -324,7 +325,8 @@ export default function SkinAvatar({
   useFrame(({ clock }, dt) => {
     const t = clock.getElapsedTime() + (timeShift ?? 0);
     const currentMotion = live ? playerMotion.motion : motion;
-    const currentAction = live && playerMotion.action !== 'idle' ? playerMotion.action : action;
+    const currentAction = action === 'incense' ? action
+      : live && playerMotion.action !== 'idle' ? playerMotion.action : action;
     const phase = live ? playerMotion.phase : stridePhase ?? t * 6.4;
     const isBow = currentAction === 'kowtow' || currentAction === 'bowing';
     const isIncense = currentAction === 'incense';
@@ -336,7 +338,7 @@ export default function SkinAvatar({
         const repeat = !live || currentAction === 'bowing';
         ritual.reset().setLoop(repeat ? THREE.LoopRepeat : THREE.LoopOnce, repeat ? Infinity : 1);
         ritual.clampWhenFinished = !repeat;
-        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? 2.6 : 3).play();
+        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION : 3).play();
         if (repeat && timeShift) {
           const duration = ritual.getClip().duration;
           ritual.time = ((timeShift % duration) + duration) % duration;

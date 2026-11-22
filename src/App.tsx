@@ -464,7 +464,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
         // 面朝香案，镜头贴近并从侧面看动作
         face?.(0);   // 实测 face(0) 就是面朝塑像（-z），别再改成别的角度
         cam?.(2.3, 0.28, -1.30);
-        fix?.([1.80, 1.55, P.z + 3.25], [0.05, 1.00, -0.35]);   // 侧后机位：角色 + 香案 + 香炉青烟同框
+        fix?.([2.40, 1.45, P.z + 0.75], [0, 1.00, P.z - 0.28]);   // 从侧面看清双手持香
         window.setTimeout(() => {
           face?.(0);                           // 到位后再锁一次朝向（行走会把人转向通道）
           machineRef.current?.incense(6400);   // 挺直站立→前倾→双手插香→直身，慢慢做完
@@ -477,7 +477,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
         }, 3800);
         window.setTimeout(() => {
           cam?.(2.0, 0.20, -1.35);
-          fix?.([1.55, 1.45, P.z + 2.55], [0.05, 0.95, -0.40]);   // 推近：看清把香插进香炉
+          fix?.([1.85, 1.35, P.z + 0.60], [0, 0.95, P.z - 0.36]);   // 侧面推近，保留双手和香
         }, 3400);
         window.setTimeout(() => {
           machineRef.current?.pray();
