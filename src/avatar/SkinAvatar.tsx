@@ -9,7 +9,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { playerMotion } from './animState';
 
 export const RIG_AVATAR_URL = 'assets/models/avatar.glb';
-const MONK_URL = 'assets/models/little-monk-yellow.glb';
+const MONK_URL = 'assets/models/little-monk-kasaya.glb';
 const MONK_HEIGHT = 1.686;
 const TEA_ROOM_ORIGIN = new THREE.Vector3(11.4, 0, 36.6);
 const TEA_ROOM_UP = new THREE.Vector3(0, 1, 0);
