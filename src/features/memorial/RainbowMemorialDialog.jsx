@@ -74,6 +74,10 @@ async function fileToJpegDataUrl(file) {
   }
 }
 
+function memorialName(name) {
+  return String(name || '').trim().replace(/\s*的\s*纪念室$/u, '의 추모관');
+}
+
 function ErrorText({ error }) {
   if (!error) return null;
   const text = error instanceof Error ? error.message : String(error);
@@ -260,7 +264,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
       const images = [];
       for (const file of newPhotos) images.push(await fileToJpegDataUrl(file));
       const data = await petApi.createRoom({
-        petName: newPetName.trim(),
+        petName: memorialName(newPetName),
         message: newMessage.trim(),
       });
       createdRoom = data.room;
@@ -310,9 +314,10 @@ export function RainbowMemorialDialog({ open, onClose }) {
         await petApi.addPhoto(selected.id, dataUrl);
       }
       await refreshRooms();
+      await refreshSelected(selected.publicId);
       setNotice(`${files.length}장을 올렸습니다.`);
     } catch (err) {
-      await refreshRooms();
+      await refreshRooms({ preserveError: true });
       setError(err);
     } finally {
       setBusy(false);
@@ -393,7 +398,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
 
   const share = async () => {
     if (!selected?.shareUrl) return;
-    const text = `${selected.petName}의 무지개다리 추모관`;
+    const text = `${memorialName(selected.petName)}의 무지개다리 추모관`;
     try {
       if (navigator.share) {
         await navigator.share({ title: text, text, url: selected.shareUrl });
@@ -504,7 +509,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
                       {room.coverPhotoUrl ? <img src={room.coverPhotoUrl} alt="" /> : <span>+</span>}
                     </span>
                     <span className="mdl-memorial-room-meta">
-                      <strong>{room.petName}</strong>
+                      <strong>{memorialName(room.petName)}</strong>
                       <small>{STATUS[room.status]?.label || room.status} · 사진 {room.photos.length}장</small>
                     </span>
                   </button>
@@ -580,7 +585,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
                   <div className="mdl-memorial-title-row">
                     <div>
                       <p className="mdl-memorial-kicker">무지개다리 추모관</p>
-                      <h3>{selected.petName}</h3>
+                      <h3>{memorialName(selected.petName)}</h3>
                     </div>
                     <span className={`mdl-memorial-status is-${statusInfo?.tone || 'muted'}`}>
                       {statusInfo?.label || selected.status}
@@ -618,11 +623,20 @@ export function RainbowMemorialDialog({ open, onClose }) {
                   ) : null}
 
                   {canSeeScene ? (
-                    <RainbowMemorialScene room={{ ...selected, photos: loadedPhotos }} />
+                    <RainbowMemorialScene room={{ ...selected, petName: memorialName(selected.petName), photos: loadedPhotos }} />
                   ) : (
                     <div className="mdl-memorial-scene-empty">
                       {selected.photos.length === 0
-                        ? '사진을 올리면 이곳에 액자가 나타납니다.'
+                        ? <div className="mdl-memorial-actions" style={{ flexDirection: 'column', alignItems: 'center' }}>
+                            <span>사진을 올리면 이곳에 액자가 나타납니다.</span>
+                            {canEdit && (
+                              <button type="button" className="mdl-memorial-primary" disabled={busy}
+                                onClick={() => fileInputRef.current?.click()}>
+                                {busy ? '사진을 올리고 있습니다…' : '사진 올리기'}
+                              </button>
+                            )}
+                            <ErrorText error={error} />
+                          </div>
                         : '지금은 추모관이 공개되지 않았습니다. 다시 결제하거나 기간을 확인해 주세요.'}
                     </div>
                   )}
@@ -654,7 +668,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
                     <div className="mdl-memorial-photo-grid">
                       {selected.photos.map((photo) => (
                         <div className="mdl-memorial-photo" key={photo.id}>
-                          {loadedPhotos.find(item => item.id === photo.id) && <img src={loadedPhotos.find(item => item.id === photo.id).url} alt={`${selected.petName} 사진`} />}
+                          {loadedPhotos.find(item => item.id === photo.id) && <img src={loadedPhotos.find(item => item.id === photo.id).url} alt={`${memorialName(selected.petName)} 사진`} />}
                           {canEdit ? (
                             <button type="button" onClick={() => removePhoto(photo.id)} disabled={busy} aria-label="사진 삭제">
                               ×
