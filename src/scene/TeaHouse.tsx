@@ -27,22 +27,23 @@ const CLAY = new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.7 })
 const LACQUER = new THREE.MeshStandardMaterial({ color: 0x2a1a12, roughness: 0.55, metalness: 0.15 });
 
 /* ---------- 匾额「안심당」 ---------- */
-function TeaPlaque() {
+function TeaPlaque({ premium }: { premium: boolean }) {
   const tex = useMemo(() => {
     const c = document.createElement('canvas');
     c.width = 512; c.height = 170;
     const g = c.getContext('2d')!;
     g.fillStyle = '#241a10'; g.fillRect(0, 0, 512, 170);
     g.strokeStyle = '#c9a24a'; g.lineWidth = 8; g.strokeRect(8, 8, 496, 154);
-    g.fillStyle = '#ecd08a'; g.font = 'bold 84px serif';
+    g.fillStyle = '#ecd08a'; g.font = premium ? 'bold 64px sans-serif' : 'bold 84px serif';
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText('안심당', 256, 82);
-    g.fillStyle = '#b08c4a'; g.font = '26px serif';
-    g.fillText('차실', 256, 140);
+    g.fillText('안심당', 256, premium ? 59 : 82);
+    g.fillStyle = premium ? '#f2d796' : '#b08c4a';
+    g.font = premium ? 'bold 46px sans-serif' : '26px serif';
+    g.fillText(premium ? '프리미엄 회원 전용' : '차실', 256, premium ? 122 : 140, 452);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
-  }, []);
+  }, [premium]);
   return (
     <group position={[0, 2.34, 2.02]}>
       <mesh castShadow>
@@ -51,7 +52,8 @@ function TeaPlaque() {
       </mesh>
       <mesh position={[0, 0, 0.04]}>
         <planeGeometry args={[1.5, 0.52]} />
-        <meshStandardMaterial map={tex} roughness={0.6} />
+        <meshStandardMaterial map={tex} roughness={0.6} emissiveMap={premium ? tex : null}
+          emissive={premium ? 0xffffff : 0x000000} emissiveIntensity={0.38} />
       </mesh>
     </group>
   );
@@ -261,7 +263,7 @@ export default function TeaHouse({
       </mesh>
 
       {/* 匾额「안심당」 */}
-      <TeaPlaque />
+      <TeaPlaque premium={openView} />
 
       {/* 后墙：挂轴 + 两道木压条，避免整面白墙显得空 */}
       {!openView && <HangingScroll z={-1.78} />}
