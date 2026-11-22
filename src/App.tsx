@@ -456,10 +456,9 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
       const now = pos?.();
       const d = now ? Math.hypot(now.x - P.x, now.z - P.z) : 0;
       if (d < 0.04) {
-        // 面朝香案，镜头贴近并从侧面看动作
+        // 从侧前方远看，整个上香过程保持同一构图
         face?.(0);   // 实测 face(0) 就是面朝塑像（-z），别再改成别的角度
-        cam?.(2.3, 0.28, -1.30);
-        fix?.([2.35, 1.48, P.z - 0.95], [0, 0.96, P.z - 0.30], false);
+        fix?.([5.70, 2.25, P.z - 2.55], [0, 0.95, P.z - 0.35], false);
         window.setTimeout(() => {
           face?.(0);                           // 到位后再锁一次朝向（行走会把人转向通道）
           machineRef.current?.incense(6400);   // 挺直站立→前倾→双手插香→直身，慢慢做完
@@ -470,10 +469,6 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           store.toast('향을 올렸습니다');
           haptic('double');
         }, 4750);
-        window.setTimeout(() => {
-          cam?.(2.0, 0.20, -1.35);
-          fix?.([1.85, 1.38, P.z - 0.82], [0, 0.90, P.z - 0.38], false);
-        }, 3400);
         window.setTimeout(() => {
           machineRef.current?.pray();
         }, 7000);
