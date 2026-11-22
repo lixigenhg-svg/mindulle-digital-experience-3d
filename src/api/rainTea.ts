@@ -19,9 +19,12 @@ export function consumeRainTeaReturn() {
   return true;
 }
 
+export function getRainTeaToken() {
+  try { return localStorage.getItem(tokenKey) || memberToken; } catch { return memberToken; }
+}
+
 export async function rainTeaRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let token = memberToken;
-  try { token = localStorage.getItem(tokenKey) || token; } catch { /* Use the in-memory token. */ }
+  const token = getRainTeaToken();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(`${rainTeaEndpoint}${path}`, {

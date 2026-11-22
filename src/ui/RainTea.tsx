@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { rainTeaRequest, rainTeaEndpoint as endpoint, rememberRainTeaToken } from '../api/rainTea';
+import { rainTeaRequest, rainTeaEndpoint as endpoint, rememberRainTeaToken, getRainTeaToken } from '../api/rainTea';
 
 const RainTeaScene = lazy(() => import('../scene/RainTeaScene'));
 
@@ -41,6 +41,8 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
   const [room, setRoom] = useState<string>();
   const [shareUrl, setShareUrl] = useState('');
   const [guestPresent, setGuestPresent] = useState(false);
+  const [guestKey] = useState(() => invite ? crypto.randomUUID() : '');
+  const guestBody = guestKey ? JSON.stringify({ guestKey }) : undefined;
   const [inviting, setInviting] = useState(false);
   const audio = useRef<AudioContext>();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -48,7 +50,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
     dialog.current?.showModal();
     const abort = new AbortController();
     if (endpoint && invite) {
-      fetch(`${endpoint}/rooms/${invite}/join`, { method: 'POST', credentials: 'include', signal: abort.signal })
+      fetch(`${endpoint}/rooms/${invite}/join`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: guestBody, signal: abort.signal })
         .then(response => {
           if (!response.ok) throw new Error();
           if (abort.signal.aborted) return;
@@ -68,7 +70,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
       abort.abort();
       if (audio.current) void audio.current.close();
     };
-  }, [invite]);
+  }, [invite, guestBody]);
 
   useEffect(() => {
     if (!endpoint || !room) return;
@@ -76,7 +78,14 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
     const address = `${endpoint}/rooms/${room}/presence`;
     async function renewPresence() {
       try {
-        const response = await fetch(address, { method: 'POST', credentials: 'include', signal: abort.signal });
+        const headers = new Headers({ 'Content-Type': 'application/json' });
+        if (!guestBody) {
+          const token = getRainTeaToken();
+          if (token) headers.set('Authorization', `Bearer ${token}`);
+        }
+        const response = await fetch(address, {
+          method: 'POST', headers, body: guestBody, credentials: 'include', signal: abort.signal,
+        });
         if (response.status === 401 || response.status === 403 || response.status === 404) {
           if (abort.signal.aborted) return;
           setRoom(undefined);
@@ -99,7 +108,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
       abort.abort();
       window.clearInterval(timer);
     };
-  }, [invite, room]);
+  }, [invite, room, guestBody]);
 
   async function inviteFriend() {
     if (!endpoint || access?.entitled !== true || inviting) return;
@@ -108,9 +117,9 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
     try {
       let code = room;
       if (!code) {
-        const response = await fetch(`${endpoint}/rooms`, { method: 'POST', credentials: 'include' });
-        if (!response.ok) throw new Error();
-        const result = await response.json();
+        const result = await rainTeaRequest<{ invite: string }>('/rooms', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+        });
         if (typeof result.invite !== 'string' || !invitePattern.test(result.invite)) throw new Error();
         code = result.invite as string;
         setRoom(code);

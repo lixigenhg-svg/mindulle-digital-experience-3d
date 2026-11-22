@@ -55,12 +55,18 @@ async function request(path, { method = 'GET', body, token = getOwnerToken() } =
     try {
       payload = JSON.parse(text);
     } catch {
-      payload = { error: text };
+      payload = null;
     }
   }
 
   if (!response.ok) {
-    throw new PetApiError(payload?.error || '요청을 처리하지 못했습니다.', {
+    const message = typeof payload?.error === 'string' ? payload.error : '';
+    const storageError = /\b(?:EACCES|EPERM|EROFS|ENOSPC)\b/.test(message);
+    throw new PetApiError(
+      storageError ? '서버에 사진을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        : message && !/[<>]|\p{Script=Han}/u.test(message) && /[가-힣]/.test(message)
+          ? message : '요청을 처리하지 못했습니다.',
+      {
       status: response.status,
       code: payload?.code || 'PET_ERROR',
       payload,
