@@ -1,4 +1,4 @@
-import { INCENSE_BURNER_Z, INCENSE_INSERT_Y, INCENSE_DURATION_MS, INCENSE_RELEASE } from '../config';
+import { INCENSE_BURNER_Z, INCENSE_INSERT_Y, INCENSE_DURATION_MS, INCENSE_INSERT_DURATION_MS, INCENSE_RELEASE } from '../config';
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -14,30 +14,35 @@ const incenseClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
 function steadyIncenseClip(source: THREE.AnimationClip) {
   const cached = incenseClips.get(source);
   if (cached) return cached;
-  // Skip the baked dip-and-lift and the final re-raise of the hands.
-  const poses = [0, 28 / 130, 81 / 130, 81 / 130, 1];
-  const beats = [0, 0.23, 0.61, INCENSE_RELEASE, 0.94];
+  const insertEnd = INCENSE_INSERT_DURATION_MS / 1000;
+  const duration = INCENSE_DURATION_MS / 1000;
+  const prayerPose = 114 / 130;
+  const poses = [0, 28 / 130, 81 / 130, 81 / 130, 1, 1, prayerPose, prayerPose, 1];
+  const beats = [
+    0, 0.23 * insertEnd, 0.61 * insertEnd, INCENSE_RELEASE * insertEnd,
+    0.94 * insertEnd, 10.8, 12.25, 16.25, duration,
+  ];
   const tracks = source.tracks.map(track => {
     const sample = track.createInterpolant();
     const keys = poses.map(progress => Array.from(sample.evaluate(progress * source.duration) as Float32Array));
     const shortened = track.clone();
-    shortened.times = Float32Array.of(0, 1, 2, 3, 4);
+    shortened.times = Float32Array.from(poses, (_, index) => index);
     shortened.values = new Float32Array(keys.flat());
     const transition = shortened.createInterpolant();
     const times = [];
     const values = [];
-    for (let frame = 0; frame <= 120; frame++) {
-      const progress = frame / 120;
-      const index = Math.min(3, beats.filter(beat => beat <= progress).length - 1);
-      const eased = THREE.MathUtils.smoothstep(progress, beats[index], beats[index + 1]);
-      times.push(progress * source.duration);
+    for (let frame = 0; frame <= duration * 30; frame++) {
+      const time = frame / 30;
+      const index = Math.min(beats.length - 2, beats.filter(beat => beat <= time).length - 1);
+      const eased = THREE.MathUtils.smoothstep(time, beats[index], beats[index + 1]);
+      times.push(time);
       values.push(...transition.evaluate(index + eased));
     }
     shortened.times = new Float32Array(times);
     shortened.values = new Float32Array(values);
     return shortened;
   });
-  const clip = new THREE.AnimationClip(source.name, source.duration, tracks);
+  const clip = new THREE.AnimationClip(source.name, duration, tracks);
   incenseClips.set(source, clip);
   return clip;
 }
@@ -432,7 +437,7 @@ export default function SkinAvatar({
           position.copy(bone.position);
           quaternion.copy(bone.quaternion);
         }
-        const progress = ritual.time / ritual.getClip().duration;
+        const progress = Math.min(1, ritual.time / (INCENSE_INSERT_DURATION_MS / 1000));
         const reach = THREE.MathUtils.smoothstep(progress, 0.32, 0.61);
         const withdraw = 1 - THREE.MathUtils.smoothstep(progress, INCENSE_RELEASE, 0.94);
         const { displacement, target, current, desired, axis, pole, rotation, wristRotation } = reachTools;
@@ -469,7 +474,10 @@ export default function SkinAvatar({
         stick.position.lerp(insertion, reach);
         avatar.incense.visible = progress < INCENSE_RELEASE;
         if (avatar.head && avatar.spine) {
-          const nod = 0.22 * THREE.MathUtils.smoothstep(progress, 0.15, 0.61) * withdraw;
+          const bow = THREE.MathUtils.smoothstep(ritual.time, 12.25, 14)
+            * (1 - THREE.MathUtils.smoothstep(ritual.time, 14.4, 16.25));
+          avatar.spine.rotateX(R(10) * bow);
+          const nod = 0.22 * THREE.MathUtils.smoothstep(progress, 0.15, 0.61) * withdraw + R(8) * bow;
           // Set the head angle relative to the body root, independent of torso recovery.
           rotation.setFromAxisAngle(nodAxis, nod);
           avatar.head.quaternion.copy(avatar.spine.quaternion).invert().multiply(rotation);
