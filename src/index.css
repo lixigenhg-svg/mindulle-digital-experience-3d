@@ -590,3 +590,43 @@ html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transi
 @media (prefers-reduced-motion: reduce) {
   .md-load-bar { animation-duration: 40s; }
 }
+
+/* Ritual instruments */
+.mala-panel {
+  width: min(390px, 100%);
+  border-radius: 24px;
+  padding: 20px;
+  background: linear-gradient(155deg, #342b22ed, #171b15f5);
+}
+.mala-close { border-radius: 50%; }
+.mala-wheel {
+  width: min(230px, 100%);
+  height: min(51dvh, 370px);
+  aspect-ratio: auto;
+}
+.mala-3d { transform: none; }
+.ritual-count { margin: 0; color: #ead8b8; }
+.ritual-count strong { font-size: 28px; font-weight: 500; }
+.woodfish-strike {
+  width: 100%;
+  padding: 16px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.woodfish-strike img {
+  display: block;
+  width: min(100%, 285px);
+  max-height: 49dvh;
+  object-fit: contain;
+  margin: auto;
+  filter: drop-shadow(0 16px 18px #0007);
+}
+.woodfish-struck { animation: woodfish-tap 220ms ease-out; }
+.woodfish-controls { display: flex; justify-content: center; gap: 12px; }
+@keyframes woodfish-tap {
+  35% { transform: scale(0.985) rotate(-1deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .woodfish-struck { animation: none; }
+}

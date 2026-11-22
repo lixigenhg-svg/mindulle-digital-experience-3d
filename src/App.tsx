@@ -18,6 +18,7 @@ import ActionBar from './ui/ActionBar';
 import Intro from './ui/Intro';
 import { fetchLamps } from './api/lamps';
 import MalaWheel from './ui/MalaWheel';
+import Woodfish from './ui/Woodfish';
 import DonationModal from './ui/DonationModal';
 import ServerModal from './ui/ServerModal';
 import SettingsModal from './ui/SettingsModal';
@@ -167,6 +168,8 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   // 站在茶室坐垫 / 庭院长凳旁边时，殿外也浮出「坐下」按钮
   const [seatNear, setSeatNear] = useState<'tea' | 'bench' | null>(null);
   const [malaOpen, setMalaOpen] = useState(false);
+  const [woodfishOpen, setWoodfishOpen] = useState(false);
+  const strikeWoodfish = useCallback(() => machine.wood_hit(), [machine]);
   const [ready, setReady] = useState(false);
   // 场景是否真正可玩（模型与贴图就绪后调试钩子才出现），用于收起加载提示
   const [sceneReady, setSceneReady] = useState(false);
@@ -648,6 +651,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           {!isPrivate && insideHall && <ActionBar
             machine={machine}
             onOpenMala={openMala}
+            onOpenWoodfish={() => { strikeWoodfish(); setWoodfishOpen(true); }}
             onTour={onTour}
             onBell={onBell}
             onWish={onWish}
@@ -670,6 +674,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
               onScreenshot={onScreenshot}
             />
           )}
+          {woodfishOpen && <Woodfish onStrike={strikeWoodfish} onClose={() => setWoodfishOpen(false)} />}
           <MalaWheel
             open={malaOpen}
             beads={beads}

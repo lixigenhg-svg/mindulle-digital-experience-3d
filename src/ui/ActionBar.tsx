@@ -10,6 +10,7 @@ import { store } from '../store';
 interface ActionBarProps {
   machine: ActionMachine;
   onOpenMala: () => void;
+  onOpenWoodfish: () => void;
   onTour: () => void;
   onBell: () => void;
   onWish: () => void;
@@ -94,14 +95,14 @@ const ICONS: Record<Kind, ReactNode> = {
 const LABELS: Record<Kind, { ko: string; zh: string }> = {
   pray: { ko: '손 모으기', zh: '' },
   bow: { ko: '예 갖추기', zh: '' },
-  wood_hit: { ko: '나무북', zh: '' },
+  wood_hit: { ko: '목어', zh: '' },
   beads: { ko: '구슬', zh: '' },
   sit: { ko: '좌선', zh: '' },
   kowtow: { ko: '삼배', zh: '' },
   offer: { ko: '체험', zh: '' },
 };
 
-export default function ActionBar({ machine, onOpenMala, onTour, onBell, onWish, onIncense, onSit, onKowtow, onBow, onOffer }: ActionBarProps) {
+export default function ActionBar({ machine, onOpenMala, onOpenWoodfish, onTour, onBell, onWish, onIncense, onSit, onKowtow, onBow, onOffer }: ActionBarProps) {
   const [state, setState] = useState<ActionState>(machine.state);
   const [visible, setVisible] = useState(true);
 
@@ -132,19 +133,14 @@ export default function ActionBar({ machine, onOpenMala, onTour, onBell, onWish,
     if (kind === 'pray') machine.pray();
     else if (kind === 'bow') (onBow ? onBow() : machine.toggleBow());
     else if (kind === 'beads') onOpenMala();
+    else if (kind === 'wood_hit') onOpenWoodfish();
     else if (kind === 'sit') (onSit ? onSit() : machine.toggleSit());
     else if (kind === 'kowtow') (onKowtow ? onKowtow() : machine.kowtow());
     else if (kind === 'offer') (onOffer ? onOffer() : machine.offer());
   };
 
-  const hold = (kind: Kind, held: boolean) => {
-    if (kind === 'beads') machine.setBeadsHold(held);
-    else if (kind === 'wood_hit') machine.setWoodfishHold(held);
-  };
-
   const renderButton = (kind: Kind) => {
     const active = state === ACTIVE_MAP[kind];
-    const isHold = kind === 'wood_hit';
     return (
       <button
         key={kind}
@@ -158,14 +154,12 @@ export default function ActionBar({ machine, onOpenMala, onTour, onBell, onWish,
         onPointerDown={e => {
           e.preventDefault();
           e.stopPropagation();
-          if (isHold) hold(kind, true);
-          else tap(kind);
+          tap(kind);
         }}
-        onPointerUp={e => {
-          e.preventDefault();
-          if (isHold) hold(kind, false);
+        onPointerUp={e => e.preventDefault()}
+        onClick={e => {
+          if (kind === 'wood_hit' && e.detail === 0) onOpenWoodfish();
         }}
-        onPointerCancel={() => isHold && hold(kind, false)}
         onContextMenu={e => e.preventDefault()}
       >
         {ICONS[kind]}

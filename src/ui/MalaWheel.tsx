@@ -1,15 +1,10 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import MalaRing3D from './MalaRing3D';
 import {
-  MALA_STEP_DEGREES,
-  TOTAL_BEADS,
   advanceMala,
   angleFromPoint,
   shortestAngleDelta
 } from '../mala';
-
-const C = 160;
-const R = 124;
 
 interface MalaWheelProps {
   open: boolean;
@@ -26,17 +21,14 @@ export default function MalaWheel({ open, beads, laps, onTurn, onReset, onClose 
   const lastAngle = useRef<number | null>(null);
   const accumulator = useRef(0);
 
-  const dots = useMemo(() => Array.from({ length: TOTAL_BEADS }, (_, i) => i), []);
-  const remaining = beads === 0 ? TOTAL_BEADS : TOTAL_BEADS - beads;
-
   if (!open) return null;
 
   const pointerAngle = (event: ReactPointerEvent) => {
     const rect = wheelRef.current?.getBoundingClientRect();
     if (!rect) return null;
     return angleFromPoint(
-      event.clientX - (rect.left + rect.width / 2),
-      event.clientY - (rect.top + rect.height / 2)
+      (event.clientX - (rect.left + rect.width / 2)) / rect.width,
+      (event.clientY - (rect.top + rect.height / 2)) / rect.height
     );
   };
 
@@ -76,8 +68,7 @@ export default function MalaWheel({ open, beads, laps, onTurn, onReset, onClose 
       <div className="mala-panel" onClick={event => event.stopPropagation()}>
         <header className="mala-head">
           <div>
-            <p className="mala-kicker">PRAYER BEADS</p>
-            <h2>108 구슬</h2>
+            <h2>108 염주</h2>
             <p className="mala-desc">천천히, 시계 방향으로 한 알씩 굴려보세요</p>
           </div>
           <button type="button" className="mala-close" data-testid="mala-close" aria-label="닫기" onClick={onClose}>
@@ -98,23 +89,11 @@ export default function MalaWheel({ open, beads, laps, onTurn, onReset, onClose 
           <div className="mala-3d">
             <MalaRing3D beads={beads} />
           </div>
-          <svg viewBox="0 0 320 320" className="mala-overlay" aria-hidden="true">
-            <g transform={`rotate(${beads * MALA_STEP_DEGREES} 160 160)`} className="mala-marker">
-              <path d="M 160 78 l -6 -9 h 12 z" />
-            </g>
-            <text x={160} y={154} textAnchor="middle" className="mala-count" data-testid="bead-count">
-              {beads}
-            </text>
-            <text x={160} y={178} textAnchor="middle" className="mala-total">/ 108</text>
-            <text x={160} y={203} textAnchor="middle" className="mala-remain">
-              {laps > 0 && beads === 0 ? '한 바퀴를 마쳤습니다' : `${remaining} 알 남음`}
-            </text>
-          </svg>
         </div>
 
         <footer className="mala-foot">
           <div>
-            <p className="mala-hint">한 알마다 마음이 조금씩 가벼워집니다.</p>
+            <p className="ritual-count"><strong data-testid="bead-count">{beads}</strong> / 108</p>
             {laps > 0 && <p className="mala-lap">완주 {laps} 바퀴</p>}
           </div>
           <div className="mala-actions">

@@ -1,72 +1,60 @@
-import { Suspense, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { Environment, Lightformer } from '@react-three/drei';
 import * as THREE from 'three';
 import { TOTAL_BEADS } from '../mala';
 
-const RING_R = 1.45;
-const BEAD_R = 0.064;
-const TILT = -1.02;
+const DISPLAY_BEADS = 24;
+
+function makeGrain() {
+  const width = 256;
+  const height = 64;
+  const pixels = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const u = x * 2 * Math.PI / width;
+      const grain = Math.sin(21 * u + 1.2 * Math.sin(3 * u + y / 35))
+        + 0.38 * Math.sin(46 * u + y / 20);
+      const i = (y * width + x) * 4;
+      pixels.set([224 + 11 * grain, 153 + 13 * grain, 85 + 10 * grain, 255], i);
+    }
+  }
+  const texture = new THREE.DataTexture(pixels, width, height);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.generateMipmaps = true;
+  texture.needsUpdate = true;
+  return texture;
+}
 
 function Beads({ beads }: { beads: number }) {
   const invalidate = useThree(s => s.invalidate);
+  const ring = useMemo(() => {
+    const points = Array.from({ length: 48 }, (_, i) => {
+      const angle = i * 2 * Math.PI / 48;
+      const sin = Math.sin(angle);
+      return new THREE.Vector3(0.52 * Math.cos(angle), 1.55 * Math.sign(sin) * Math.abs(sin) ** 0.75, 0);
+    });
+    return new THREE.CatmullRomCurve3(points, true);
+  }, []);
+  const grain = useMemo(makeGrain, []);
+  const geometry = useMemo(() => new THREE.SphereGeometry(0.132, 24, 16), []);
+  const cord = useMemo(() => new THREE.TubeGeometry(ring, 80, 0.013, 6, true), [ring]);
   useEffect(() => { invalidate(); }, [beads, invalidate]);
-  const geo = useMemo(() => new THREE.SphereGeometry(BEAD_R, 18, 12), []);
-  const dimMat = useMemo(
-    () =>
-      new THREE.MeshPhysicalMaterial({
-        color: new THREE.Color('#fffaf0'),
-        metalness: 0,
-        roughness: 0.055,
-        transmission: 0.96,
-        thickness: 0.55,
-        ior: 1.62,
-        clearcoat: 1,
-        clearcoatRoughness: 0.03,
-        attenuationColor: new THREE.Color('#cba76a'),
-        attenuationDistance: 1.4,
-        envMapIntensity: 2.6
-      }),
-    []
-  );
-  const litMat = useMemo(
-    () =>
-      new THREE.MeshPhysicalMaterial({
-        color: new THREE.Color('#ffe7bc'),
-        metalness: 0,
-        roughness: 0.03,
-        transmission: 0.86,
-        thickness: 0.5,
-        ior: 1.62,
-        clearcoat: 1,
-        clearcoatRoughness: 0.02,
-        attenuationColor: new THREE.Color('#ffb24d'),
-        attenuationDistance: 0.6,
-        emissive: new THREE.Color('#ff9a33'),
-        emissiveIntensity: 0.95,
-        envMapIntensity: 3.0
-      }),
-    []
-  );
-
-  const points = useMemo(
-    () =>
-      Array.from({ length: TOTAL_BEADS }, (_, i) => {
-        const a = (i / TOTAL_BEADS) * Math.PI * 2;
-        return { i, x: Math.cos(a) * RING_R, y: Math.sin(a) * RING_R };
-      }),
-    []
-  );
+  useEffect(() => () => { grain.dispose(); geometry.dispose(); cord.dispose(); }, [grain, geometry, cord]);
 
   return (
-    <group rotation={[TILT, 0, 0]}>
-      {points.map(p => (
+    <group rotation={[0.06, -0.25, -0.10]}>
+      <mesh geometry={cord}><meshStandardMaterial color="#9a6a3e" roughness={1} /></mesh>
+      {Array.from({ length: DISPLAY_BEADS }, (_, index) => (
         <mesh
-          key={p.i}
-          geometry={geo}
-          material={p.i < beads ? litMat : dimMat}
-          position={[p.x, p.y, 0]}
-        />
+          key={index}
+          geometry={geometry}
+          position={ring.getPointAt((index / DISPLAY_BEADS + beads / TOTAL_BEADS) % 1)}
+          rotation={[0.25, index * 0.7, 0.09 * Math.sin(index)]}
+        >
+          <meshStandardMaterial map={grain} color={index % 3 === 0 ? '#e2bb91' : '#fff3dd'} roughness={0.35} />
+        </mesh>
       ))}
     </group>
   );
@@ -76,25 +64,14 @@ export default function MalaRing3D({ beads }: { beads: number }) {
   return (
     <Canvas
       dpr={[1, 1.5]}
-      gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-      camera={{ position: [0, 0, 4.9], fov: 36 }}
+      gl={{ antialias: true, alpha: true }}
+      camera={{ position: [0, 0, 5.5], fov: 36 }}
       style={{ pointerEvents: 'none' }}
       frameloop="demand"
     >
-      <ambientLight intensity={0.28} />
-      <directionalLight position={[2.4, 3.2, 4]} intensity={1.8} color="#fff2d8" />
-      <pointLight position={[-3, -2, 3]} intensity={2.2} color="#ffcf92" />
-      <Suspense fallback={null}>
-        <Environment resolution={128} frames={1}>
-          <color attach="background" args={['#0c0a06']} />
-          <Lightformer form="rect" intensity={5} position={[0, 4, 3]} scale={[6, 2, 1]} color="#fff6e2" />
-          <Lightformer form="rect" intensity={3.4} position={[-4, 1, 3]} scale={[2, 6, 1]} color="#ffd9a0" />
-          <Lightformer form="rect" intensity={2.4} position={[4, -1, 2]} scale={[2, 4, 1]} color="#dfeaff" />
-          <Lightformer form="rect" intensity={9} position={[-2.2, 1.4, 4]} scale={[0.55, 4.2, 1]} color="#ffffff" />
-          <Lightformer form="rect" intensity={5} position={[2.4, -2, 3.4]} scale={[3.2, 0.5, 1]} color="#fff2d8" />
-          <Lightformer form="ring" intensity={2} position={[0, -3, 2.5]} scale={3} color="#ffbf70" />
-        </Environment>
-      </Suspense>
+      <hemisphereLight args={['#fff4dd', '#4c2c1b', 1.55]} />
+      <directionalLight position={[-2.4, 3.2, 4]} intensity={2.4} color="#fff2db" />
+      <directionalLight position={[2, -1, 1]} intensity={0.55} color="#ffd09b" />
       <Beads beads={beads} />
     </Canvas>
   );
