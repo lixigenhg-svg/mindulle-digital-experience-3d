@@ -18,8 +18,8 @@ const WOOD_DARK = new THREE.MeshStandardMaterial({ color: 0x3a2418, roughness: 0
 const PINE = new THREE.MeshStandardMaterial({ color: 0x2f4a34, roughness: 0.85 });
 const MAPLE = new THREE.MeshStandardMaterial({ color: 0x9a4a2e, roughness: 0.85 });
 const BAMBOO = new THREE.MeshStandardMaterial({ color: 0x5e7a44, roughness: 0.8 });
-/* 秋叶五色（原项目是浓密的红/橙/金枫林，单色树会显得空） */
-const AUTUMN = [0xa8352a, 0xc4552b, 0xd5792c, 0xe2a13a, 0xb03f2c, 0xd9b24a].map(
+/* 枫林主色：深枫红、柿橙、赭黄和旧金 */
+const AUTUMN = [0x9e3d32, 0xb85a32, 0xc9803d, 0xd49b45, 0x935137, 0xc6a458].map(
   (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9, flatShading: true }),
 );
 const LEAF_SOIL = new THREE.MeshStandardMaterial({ color: 0xb08a5e, roughness: 1 });
@@ -166,7 +166,7 @@ function makeStoneTexture() {
 
 /* 固定伪随机，保证每次渲染布局一致，不抖动 */
 function seeded(seed: number) {
-  let s = seed;
+  let s = THREE.MathUtils.euclideanModulo(seed, 233280);
   return () => {
     s = (s * 9301 + 49297) % 233280;
     return s / 233280;
@@ -229,7 +229,7 @@ let MAPLE_LEAF_GEO: THREE.ShapeGeometry | null = null;
 function mapleLeafGeo() {
   if (MAPLE_LEAF_GEO) return MAPLE_LEAF_GEO;
   const shape = new THREE.Shape();
-  const N = 72;
+  const N = 40;
   for (let i = 0; i <= N; i++) {
     const a = (i / N) * Math.PI * 2;
     const lobe = Math.max(0, Math.cos(5 * a));
@@ -246,17 +246,9 @@ function mapleLeafGeo() {
 
 /* ---------- 枫树（橙红球冠） ---------- */
 
-function Maple({ position, scale = 1, mat = MAPLE }: { position: [number, number, number]; scale?: number; mat?: THREE.Material }) {
-  const leafMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: (mat as THREE.MeshStandardMaterial).color,
-        alphaTest: 0.42,
-        side: THREE.DoubleSide,
-        roughness: 1,
-      }),
-    [mat],
-  );
+const MAPLE_LEAVES = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.95 });
+
+function Maple({ position, scale = 1, mat = MAPLE }: { position: [number, number, number]; scale?: number; mat?: THREE.MeshStandardMaterial }) {
   const skin = useMemo(() => {
     // 树冠骨架：几层小枝
     return [
@@ -276,21 +268,27 @@ function Maple({ position, scale = 1, mat = MAPLE }: { position: [number, number
     const e = new THREE.Euler();
     const v = new THREE.Vector3();
     const N = 190;
+    const leafColor = new THREE.Color();
+    const tint = seeded(947 + Math.round(position[0] * 11 + position[2] * 17));
     for (let i = 0; i < N; i++) {
       const u = rnd() * Math.PI * 2;
       const z = rnd() * 2 - 1;
       const rr = Math.sqrt(1 - z * z);
-      const rad = 0.62 + rnd() * 0.5;
-      v.set(Math.cos(u) * rr * rad * 1.15, -0.55 + (z * 0.5 + 0.5) * 1.9, Math.sin(u) * rr * rad * 1.1);
-      v.y += 2.55;
+      const lobe = 1 + 0.16 * Math.cos(u * 3 + position[2]);
+      const rad = (0.55 + rnd() * 0.56) * lobe;
+      v.set(Math.cos(u) * rr * rad * 1.29, 2.95 + z * 0.95, Math.sin(u) * rr * rad * 1.16);
       e.set(rnd() * Math.PI, rnd() * Math.PI, rnd() * Math.PI);
       q.setFromEuler(e);
       const sc = 0.46 + rnd() * 0.34;
       m.compose(v, q, new THREE.Vector3(sc, sc, sc));
       inst.current.setMatrixAt(i, m);
+      leafColor.copy(mat.color).offsetHSL((tint() - 0.5) * 0.055, (tint() - 0.5) * 0.15, (tint() - 0.5) * 0.21);
+      inst.current.setColorAt(i, leafColor);
     }
     inst.current.instanceMatrix.needsUpdate = true;
-  }, [position]);
+    if (inst.current.instanceColor) inst.current.instanceColor.needsUpdate = true;
+    inst.current.computeBoundingSphere();
+  }, [mat, position]);
 
   return (
     <group position={position} scale={scale}>
@@ -309,7 +307,7 @@ function Maple({ position, scale = 1, mat = MAPLE }: { position: [number, number
           <icosahedronGeometry args={[b.r, 1]} />
         </mesh>
       ))}
-      <instancedMesh ref={inst} args={[mapleLeafGeo(), leafMat, 190]} castShadow />
+      <instancedMesh ref={inst} args={[mapleLeafGeo(), MAPLE_LEAVES, 190]} castShadow />
     </group>
   );
 }
@@ -667,10 +665,23 @@ function BannerPole({ x, z }: { x: number; z: number }) {
 
 /* ---------- 远山 ---------- */
 
-function Mountain({ position, scale, color }: { position: [number, number, number]; scale: number | [number, number, number]; color: number }) {
+function MountainRidge({ z, height, seed, color }: { z: number; height: number; seed: number; color: number }) {
+  const profile = useMemo(() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(-100, -3);
+    for (let x = -100; x <= 100; x += 2) {
+      const broad = 0.49 + 0.20 * Math.sin(x * 0.09 + seed) + 0.15 * Math.cos(x * 0.17 - seed);
+      const detail = 0.06 * Math.sin(x * 0.32 + seed) + 0.025 * Math.cos(x * 0.72);
+      shape.lineTo(x, height * (broad + detail));
+    }
+    shape.lineTo(100, -3);
+    shape.closePath();
+    return shape;
+  }, [height, seed]);
   return (
-    <mesh position={position} scale={scale} material={new THREE.MeshStandardMaterial({ color, roughness: 1 })}>
-      <coneGeometry args={[6, 9, 6]} />
+    <mesh position={[0, 0, z]}>
+      <shapeGeometry args={[profile]} />
+      <meshBasicMaterial color={color} side={THREE.DoubleSide} toneMapped={false} fog={false} />
     </mesh>
   );
 }
@@ -1014,18 +1025,10 @@ export default function Exterior() {
           : <Maple key={i} position={[t.x, 0, t.z]} scale={t.s} mat={AUTUMN[t.c]} />
       )}
 
-      {/* 山门外远景山：淡色低多边形，把地平线后的空白补上 */}
-      {[
-        { x: -46, z: 104, h: 4.6, r: 3.4 },
-        { x: -14, z: 116, h: 6.2, r: 3.8 },
-        { x: 18, z: 108, h: 4.2, r: 3.5 },
-        { x: 52, z: 98, h: 3.6, r: 3.0 },
-      ].map((m, i) => (
-        <mesh key={`mt${i}`} position={[m.x, m.h * 0.42, m.z]} rotation-y={i * 0.7}>
-          <coneGeometry args={[m.h * m.r, m.h, 7]} />
-          <meshBasicMaterial color={0xa9b3a2} />
-        </mesh>
-      ))}
+      {/* 从树林到地平线，山脊颜色逐层变浅。 */}
+      <MountainRidge z={80} height={10} seed={2} color={0x76877c} />
+      <MountainRidge z={98} height={16} seed={5} color={0x8fa5a4} />
+      <MountainRidge z={117} height={23} seed={8} color={0xa7bec3} />
 
       {/* 山门外石灯笼：入口前一对，给空地一个落点 */}
       <StoneLantern x={-6.2} z={56.5} />
@@ -1135,10 +1138,10 @@ export default function Exterior() {
       <BannerPole x={-5.4} z={40.5} />
       <BannerPole x={5.4} z={40.5} />
 
-      {/* 远山层次 */}
-      <Mountain position={[-16, 1.5, -30]} scale={[1.6, 1, 1.2]} color={0x3d4636} />
-      <Mountain position={[0, 1, -34]} scale={[2.1, 1.2, 1.2]} color={0x36402f} />
-      <Mountain position={[18, 1.5, -28]} scale={[1.5, 1, 1.2]} color={0x3d4636} />
+      {/* 殿后远山 */}
+      <MountainRidge z={-37} height={9} seed={1} color={0x758579} />
+      <MountainRidge z={-53} height={17} seed={6} color={0x90a6a4} />
+      <MountainRidge z={-72} height={24} seed={4} color={0xa7bec3} />
     </group>
   );
 }

@@ -616,7 +616,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
       <Canvas
         shadows={!IS_HEADLESS}
         dpr={IS_HEADLESS ? 0.6 : [1, IS_MOBILE ? 1 : 1.5]}
-        camera={{ fov: 58, near: 0.1, far: 100, position: [0, 2.2, 5.6] }}
+        camera={{ fov: 58, near: 0.1, far: isPrivate ? 100 : 165, position: [0, 2.2, 5.6] }}
         gl={{ antialias: !IS_MOBILE, toneMappingExposure: 1.32, preserveDrawingBuffer: true }}
         onCreated={(state) => {
           (window as any).__SCENE__ = state.scene;
