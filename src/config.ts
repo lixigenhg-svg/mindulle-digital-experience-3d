@@ -18,7 +18,7 @@ export const BOUNDS_Z_MIN = -1.4; // 塑像前为止：不允许绕到塑像背�
 export const BOUNDS_Z_MAX = 60.0;
 
 /** 移动速度 m/s */
-export const MOVE_SPEED = 0.78; // 与步幅匹配的慢速：一步约 0.30 m、1.3 步/秒，走路不打滑
+export const MOVE_SPEED = 0.90; // 步态按实际移动距离推进，每步约 0.30 米
 
 /** 相机限位（第三人称近距离跟随，角色约占画面高度三分之一） */
 export const CAM = {
