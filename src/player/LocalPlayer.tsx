@@ -1,4 +1,4 @@
-import { npcEncounterPoints } from '../avatar/encounter';
+import { Encounter, facePoint, npcEncounterPoints, turnToward } from '../avatar/encounter';
 import { planWalk } from './walkRoute';
 /**
  * LocalPlayer.tsx —— 本地玩家：位移、朝向、第三人称相机、输入（点地移动 / 拖拽旋转 / 双指缩放）
@@ -235,6 +235,9 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     return p;
   };
   /* ---------- 键盘 ---------- */
+  const encounter = useRef(new Encounter());
+  const encounterExit = useRef<THREE.Vector3 | null>(null);
+  const leavingEncounter = useRef(false);
   const walkTolerance = useRef(0.15);
   const waypoints = useRef<THREE.Vector3[]>([]);
   const setWalkTarget = (goal: THREE.Vector3, tolerance: number) => {
@@ -434,6 +437,39 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
 
     move.set(0, 0, 0);
     const touring = store.hud.tourActive;
+    const peers = [...store.peers.values()];
+    const people = [...peers, ...npcEncounterPoints.values()];
+    const meet = encounter.current;
+    if (!s.target || machine.isActive() || touring) leavingEncounter.current = false;
+    const stage = meet.update(s.pos, people,
+      !privateMode && !touring && !machine.isActive() && !turn.current && !leavingEncounter.current, dt);
+    if (stage === 'none') encounterExit.current = null;
+    if (meet.target && (stage === 'face' || stage === 'bow')) {
+      s.facing = turnToward(s.facing, facePoint(s.pos, meet.target), dt * 7);
+    }
+    if (meet.target && stage === 'turn') {
+      if (!encounterExit.current) {
+        const away = facePoint(s.pos, meet.target) + Math.PI;
+        const distance = Math.hypot(s.pos.x - meet.target.x, s.pos.z - meet.target.z);
+        for (const offset of [0, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2]) {
+          const angle = away + offset;
+          const goal = clampRoom(new THREE.Vector3(
+            s.pos.x - 1.65 * Math.sin(angle), 0, s.pos.z - 1.65 * Math.cos(angle),
+          ));
+          if (Math.hypot(goal.x - meet.target.x, goal.z - meet.target.z) > distance + 0.45) {
+            encounterExit.current = goal;
+            break;
+          }
+        }
+      }
+      if (encounterExit.current) {
+        s.facing = turnToward(s.facing, facePoint(s.pos, encounterExit.current), dt * 7);
+      }
+    }
+    if (stage === 'leave' && encounterExit.current) {
+      setWalkTarget(encounterExit.current, 0.15);
+      leavingEncounter.current = Boolean(s.target);
+    }
 
     if (touring) {
       // 绕塔自动巡游：沿塔基圆周行走，面向切线方向，一圈后回出生点
@@ -465,7 +501,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
       s.tourOn = false;
       if (lock === 'all') s.target = null;
 
-      if (lock !== 'all') {
+      if (lock !== 'all' && stage === 'none') {
         forward.set(-Math.sin(s.yaw), 0, -Math.cos(s.yaw));
         right.set(-forward.z, 0, forward.x);
         if (keyState['KeyW'] || keyState['ArrowUp']) move.add(forward);
@@ -479,6 +515,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
           move.addScaledVector(right, stick.right);
         }
 
+        if (leavingEncounter.current) move.set(0, 0, 0);
         if (move.lengthSq() > 0) {
           s.target = null;
         } else if (s.target) {
@@ -510,13 +547,12 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     const speedK = (window as unknown as { __MD_SPEED_K__?: number }).__MD_SPEED_K__ ?? 1;
     const wantSpeed = moving ? MOVE_SPEED * speedK : 0;
     s.speedCur += (wantSpeed - s.speedCur) * Math.min(1, dt * 5);
-    if (!touring) s.anim = s.speedCur > 0.12 ? 'walk' : 'idle';
+    if (!touring) s.anim = stage === 'none' && s.speedCur > 0.12 ? 'walk' : 'idle';
 
     // —— 玩家之间：不能互相穿过，相遇时倾身抱拳行礼再错开 ——
-    const peers = [...store.peers.values()];
     const nowMs = performance.now();
     // 互为障碍：把别人的身体推开，谁也别从对方身上穿过去
-    for (const p of peers) {
+    for (const p of stage === 'none' ? peers : []) {
       const dx = s.pos.x - p.x;
       const dz = s.pos.z - p.z;
       const d2 = dx * dx + dz * dz;
@@ -531,7 +567,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     if (moving && !touring) {
       move.normalize();
       // Keep the destination and steer around someone standing in the way.
-      for (const person of [...peers, ...npcEncounterPoints.values()]) {
+      for (const person of people) {
         const dx = person.x - s.pos.x;
         const dz = person.z - s.pos.z;
         const ahead = dx * move.x + dz * move.z;
@@ -574,7 +610,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     playerMotion.phase = s.walkPhase;
     if (!(window as unknown as { __MD_LOCK__?: boolean }).__MD_LOCK__) {
       playerMotion.action = machine.state === 'sitting' && (activeTeaSeat.current || activeBench.current)
-        ? 'sitting' : action;
+        ? 'sitting' : stage === 'bow' ? 'greet' : action;
     }
     // 每秒记一次站位，刷新后能回到原处
     if (nowMs - lastSave.current > 1000) {

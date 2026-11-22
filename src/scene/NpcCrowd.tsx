@@ -22,11 +22,11 @@ function useNpcEncounter(id: string) {
     if (self) people.push(self);
     const meet = encounter.current;
     const stage = meet.update(group.position, people, departure.current <= 0, dt);
-    if (stage === 'leave') departure.current = 0.9;
+    if (stage === 'leave') departure.current = 1.5;
     if (departure.current > 0) {
       departure.current -= dt;
-      const x = group.position.x - Math.sin(group.rotation.y) * 0.65 * dt;
-      const z = group.position.z - Math.cos(group.rotation.y) * 0.65 * dt;
+      const x = group.position.x - Math.sin(group.rotation.y) * 0.9 * dt;
+      const z = group.position.z - Math.cos(group.rotation.y) * 0.9 * dt;
       const point = yard ? pushOutOfYard(x, z, 0.30) : { x, z };
       phase.current += Math.hypot(point.x - group.position.x, point.z - group.position.z) * Math.PI / 0.30;
       group.position.x = point.x;
