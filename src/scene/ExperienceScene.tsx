@@ -805,20 +805,22 @@ function LongTable() {
   );
 }
 
-/* ---------- 方形蒲团阵列 ---------- */
+/* ---------- 圆形蒲团阵列 ---------- */
 
 
 function Cushions() {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x2a2c2e, roughness: 0.95, metalness: 0 });
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({ color: 0x55473e, roughness: 0.97 }), []);
+  const geometry = useMemo(() => new THREE.LatheGeometry([
+    [0, -0.045], [0.50, -0.045], [0.55, -0.04], [0.59, -0.024],
+    [0.60, 0.007], [0.58, 0.035], [0.53, 0.048], [0.44, 0.05], [0, 0.05],
+  ].map(([r, y]) => new THREE.Vector2(r, y)), 32), []);
   return (
     <group>
       {CUSHION_ROWS.map(z =>
         CUSHION_COLS.map(x => (
           // 中间过道（|x| < 1.15）留空，坐垫只在过道两侧排
           Math.abs(x) < 1.15 ? null : (
-            <mesh key={`${x}-${z}`} position={[x, 0.045, z]} castShadow receiveShadow material={mat}>
-              <boxGeometry args={[1.20, 0.1, 1.30]} />
-            </mesh>
+            <mesh key={`${x}-${z}`} position={[x, 0.045, z]} castShadow receiveShadow material={mat} geometry={geometry} />
           )
         ))
       )}

@@ -255,6 +255,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
   };
   /* ---------- 键盘 ---------- */
   const walkTolerance = useRef(0.15);
+  const turn = useRef<{ from: number; delta: number; start: number; duration: number } | null>(null);
   // 供外部调用：让玩家自动走到某点（上香等场景使用）
   useEffect(() => {
     (window as any).__MD_WALK__ = (x: number, z: number, tolerance = 0.15) => {
@@ -278,10 +279,16 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     (window as any).__MD_POS__ = () => ({ x: state.current.pos.x, z: state.current.pos.z });
     (window as any).__MD_CAMPOS__ = () => ({ x: camera.position.x, y: camera.position.y, z: camera.position.z, fov: camera.fov });
     // 让玩家原地转向某个角度（落座时朝向塑像）
-    (window as any).__MD_FACE__ = (rot: number) => {
+    (window as any).__MD_FACE__ = (rot: number, duration = 0) => {
       const s = state.current;
-      s.facing = rot;
       s.target = null;
+      if (duration > 0) {
+        const delta = Math.atan2(Math.sin(rot - s.facing), Math.cos(rot - s.facing));
+        turn.current = { from: s.facing, delta, start: performance.now(), duration };
+      } else {
+        turn.current = null;
+        s.facing = rot;
+      }
     };
     // 碰撞自检：传一个落点，返回被障碍推开后的位置（调试用）
     (window as any).__MD_TEST_PUSH__ = (x: number, z: number) => {
@@ -485,6 +492,13 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     }
 
     const moving = move.lengthSq() > 0.0001 || touring;
+    if (moving) turn.current = null;
+    if (turn.current) {
+      const { from, delta, start, duration } = turn.current;
+      const progress = Math.min(1, (performance.now() - start) / duration);
+      s.facing = from + delta * THREE.MathUtils.smoothstep(progress, 0, 1);
+      if (progress === 1) turn.current = null;
+    }
     // 速度平滑：起步加速、停步减速，看起来是"走起来/停下来"而不是瞬间平移
     const speedK = (window as unknown as { __MD_SPEED_K__?: number }).__MD_SPEED_K__ ?? 1;
     const wantSpeed = moving ? MOVE_SPEED * speedK : 0;

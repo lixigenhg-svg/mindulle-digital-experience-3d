@@ -439,7 +439,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   const onIncense = () => {
     const P = { x: 0, z: INCENSE_BURNER_Z + 0.76 };
     const walk = (window as unknown as { __MD_WALK__?: (x: number, z: number, tolerance?: number) => void }).__MD_WALK__;
-    const face = (window as unknown as { __MD_FACE__?: (r: number) => void }).__MD_FACE__;
+    const face = (window as unknown as { __MD_FACE__?: (r: number, duration?: number) => void }).__MD_FACE__;
     const pos = (window as unknown as { __MD_POS__?: () => { x: number; z: number } }).__MD_POS__;
     const cam = (window as unknown as { __MD_CAM__?: (d: number, p: number, y: number) => void }).__MD_CAM__;
     const fix = (window as unknown as {
@@ -470,9 +470,27 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           haptic('double');
         }, 500 + INCENSE_INSERT_DURATION_MS * INCENSE_RELEASE);
         window.setTimeout(() => {
-          fix?.();                              // 解除定点机位
-          scale?.(1.0);                         // 上香结束恢复常态大小
-          cam?.(4.6, 0.30, 0);                 // 回到身后视角
+          fix?.();
+          scale?.(1);
+          cam?.(4.6, 0.30, 0);
+          const now = pos?.() ?? P;
+          const cushion = nearestFreeCushion(new THREE.Vector3(now.x, 0, now.z), [...store.peers.values()]);
+          const direction = Math.atan2(now.x - cushion.x, now.z - cushion.z);
+          face?.(direction, 1500);
+          window.setTimeout(() => {
+            walk?.(cushion.x, cushion.z, 0.035);
+            const deadline = performance.now() + 5000 + Math.hypot(now.x - cushion.x, now.z - cushion.z) / MOVE_SPEED * 1500;
+            const waitForCushion = () => {
+              const current = pos?.();
+              if (current && Math.hypot(current.x - cushion.x, current.z - cushion.z) < 0.045) {
+                face?.(0, 1350);
+                window.setTimeout(() => machineRef.current?.kowtow(), 1400);
+              } else if (performance.now() < deadline) {
+                window.setTimeout(waitForCushion, 100);
+              }
+            };
+            window.setTimeout(waitForCushion, 100);
+          }, 1550);
         }, 500 + INCENSE_DURATION_MS + 850);
         return;
       }
@@ -484,7 +502,6 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
     };
     window.setTimeout(arrive, 300);
   };
-
   /** 坐下 / 行礼：先在坐垫阵列里找一块没人占的，走过去，站定后再由动作机接管 */
   const seatFlow = (start: (c: { x: number; z: number }) => void) => {
     const p = moveRef.current ?? { x: 0, z: 4, rot: 0, anim: 'idle' as const };

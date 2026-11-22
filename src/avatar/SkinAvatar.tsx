@@ -503,7 +503,12 @@ export default function SkinAvatar({
       // Keep the stance foot fixed relative to the floor as the avatar moves.
       const scale = avatar.scene.getWorldScale(insertion).y / group.scale.y;
       for (const [index, leg] of avatar.legs.entries()) {
-        walkLeg(phase + index * Math.PI, scale, ...leg);
+        const legPhase = phase + index * Math.PI;
+        walkLeg(legPhase, scale, ...leg);
+        const [upperArm, forearm] = avatar.arms[index];
+        const swing = Math.cos(legPhase);
+        upperArm.rotation.set(R(17) * swing, 0, R(index === 0 ? 5 : -5));
+        forearm.rotation.set(-R(10 + Math.max(0, -swing) * 10), 0, 0);
       }
     }
     const stride = Math.sin(phase);
