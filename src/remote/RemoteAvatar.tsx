@@ -8,6 +8,9 @@ import * as THREE from 'three';
 import type { ActionState } from '../actions';
 import type { PeerState } from '../store';
 import SkinAvatar from '../avatar/SkinAvatar';
+import { Encounter, facePoint, npcEncounterPoints, turnToward } from '../avatar/encounter';
+import { store } from '../store';
+import type { Action, Motion } from '../avatar/animState';
 
 const PRAY_MS = 1500;
 const WOODFISH_MS = 700;
@@ -15,13 +18,14 @@ const WOODFISH_MS = 700;
 export default function RemoteAvatar({ peer }: { peer: PeerState }) {
   const groupRef = useRef<THREE.Group>(null);
   const target = useRef(new THREE.Vector3(peer.x, 0, peer.z));
-  const rot = useRef(peer.rot);
+  const initial = useRef({ x: peer.x, z: peer.z, rot: peer.rot }).current;
+  const playback = useRef<{ action: Action; motion: Motion; phase: number }>({
+    action: 'idle', motion: 'idle', phase: 0,
+  });
   const state = useRef<ActionState>('idle');
   const until = useRef(0);
   const latest = useRef(peer);
-  /** 与本地玩家相遇：自己这边也倾身抱拳，随后让开 */
-  const greetUntil = useRef(0);
-  const greetCool = useRef(0);
+  const encounter = useRef(new Encounter());
   latest.current = peer;
 
   const replay = (action?: string) => {
@@ -44,48 +48,41 @@ export default function RemoteAvatar({ peer }: { peer: PeerState }) {
     const dt = Math.min(dtRaw, 0.05);
     const p = latest.current;
     target.current.set(p.x, 0, p.z);
-    rot.current = p.rot;
-
-    // 相遇判定：用自己的位置和本地玩家的位置比，各自本地算，不经过服务器
-    const self = (window as unknown as { __MD_SELF__?: { x: number; z: number } }).__MD_SELF__;
-    const nowMs = performance.now();
-    if (self) {
-      const dx = p.x - self.x;
-      const dz = p.z - self.z;
-      if (dx * dx + dz * dz < 1.55 * 1.55 && nowMs > greetCool.current) {
-        greetUntil.current = nowMs + 1500;
-        greetCool.current = nowMs + 6000;
-      }
-    }
-    const greeting = nowMs < greetUntil.current;
-
     const group = groupRef.current;
-    if (group && !greeting) {
-      const alpha = 1 - Math.pow(0.001, dt);
-      group.position.lerp(target.current, alpha);
-
-      let diff = rot.current - group.rotation.y;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      group.rotation.y += diff * Math.min(1, dt * 12);
-    }
-
+    if (!group) return;
     if (until.current > 0 && performance.now() >= until.current) {
       until.current = 0;
       state.current = 'idle';
     }
+
+    const self = (window as unknown as { __MD_SELF__?: { x: number; z: number } }).__MD_SELF__;
+    const people = [...npcEncounterPoints.values(), ...[...store.peers.values()].filter(other => other.id !== p.id)];
+    if (self) people.push(self);
+    const meet = encounter.current;
+    const stage = meet.update(group.position, people, state.current === 'idle', dt);
+    const pose = playback.current;
+    if (meet.target && (stage === 'face' || stage === 'bow' || stage === 'turn')) {
+      const facing = facePoint(group.position, meet.target);
+      group.rotation.y = turnToward(group.rotation.y, stage === 'turn' ? facing + Math.PI : facing, dt * 7);
+      pose.action = stage === 'bow' ? 'greet' : 'idle';
+      pose.motion = 'idle';
+      return;
+    }
+
+    const gap = group.position.distanceTo(target.current);
+    const step = Math.min(1 - Math.pow(0.001, dt), 1.8 * dt / Math.max(gap, 0.001));
+    group.position.lerp(target.current, step);
+    group.rotation.y = turnToward(group.rotation.y, p.rot, dt * 7);
+    const distance = gap * step;
+    pose.phase += distance * Math.PI / 0.30;
+    pose.action = state.current;
+    pose.motion = distance > 0.001 && (p.anim === 'walk' || gap > 0.12) ? 'walk' : 'idle';
+
   });
 
   return (
-    <group ref={groupRef} position={[peer.x, 0, peer.z]} rotation-y={peer.rot}>
-      {/* 所有玩家统一同一个形象：和本人一样的雕刻稿小角色 */}
-      <SkinAvatar
-        height={1.55}
-        motion={latest.current.anim === 'walk' ? 'walk' : 'idle'}
-        action={performance.now() < greetUntil.current ? 'greet' : state.current}
-        live={false}
-        seatKind="floor"
-      />
+    <group ref={groupRef} position={[initial.x, 0, initial.z]} rotation-y={initial.rot}>
+      <SkinAvatar height={1.55} playback={playback} live={false} seatKind="floor" />
     </group>
   );
 }

@@ -1,3 +1,4 @@
+import { GREET_SECONDS } from './encounter';
 import { KOWTOW_DURATION_MS } from '../actions';
 import { INCENSE_BURNER_Z, INCENSE_INSERT_Y, INCENSE_DURATION_MS, INCENSE_INSERT_DURATION_MS, INCENSE_RELEASE } from '../config';
 import { useMemo, useRef } from 'react';
@@ -125,6 +126,7 @@ interface Props {
   action?: 'idle' | 'praying' | 'bowing' | 'wood_hit' | 'beads' | 'sitting' | 'kowtow' | 'incense' | 'offering' | 'greet';
   /** 走路相位（按位移推进，避免脚底打滑） */
   stridePhase?: number;
+  playback?: { current: { action: Props['action']; motion: 'idle' | 'walk'; phase?: number } };
   /** true = 每帧从 playerMotion 读实时动作（本地玩家用） */
   live?: boolean;
   /** 时间偏移：让一群角色的行礼节奏各不相同，不再整齐划一 */
@@ -253,21 +255,7 @@ function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt 
     } as Record<string, [number, number, number]>;
   }
 
-  if (action === 'greet') {
-    // 相遇行礼：向前倾身、双手在胸前抱拳，起落各占一半，1.5 秒一轮
-    const T = 1.5;
-    const p = Math.min(1, t / T);
-    const lift = p < 0.5 ? p * 2 : (1 - p) * 2;        // 0 → 1 → 0
-    const e = lift * lift * (3 - 2 * lift);            // 缓入缓出
-    return {
-      spine: [R(7 * e), 0, 0], chest: [R(9 * e), 0, 0],
-      neck: [R(3 * e), 0, 0], head: [R(9 * e), 0, 0],
-      // 上臂向前抬起并向内收，前臂折到胸前，两手在中间相抱
-      armL: [R(46 * e), 0, R(20 * e)], armR: [R(46 * e), 0, R(-20 * e)],
-      foreL: [R(74 * e), 0, R(16 * e)], foreR: [R(74 * e), 0, R(-16 * e)],
-      thighL: [R(1), 0, R(3)], thighR: [R(1), 0, R(-3)],
-    } as Record<string, [number, number, number]>;
-  }
+  if (action === 'greet') return {} as Record<string, [number, number, number]>;
 
   if (action === 'incense') {
     // 上香四步，一口气慢慢做完：挺直站立 → 向前躬身 → 双手把香插进香炉 → 直身收回
@@ -350,7 +338,7 @@ function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt 
 // rotations into the new model's bone space for actions without baked clips.
 export default function SkinAvatar({
   position = [0, 0, 0], rotationY = 0, height = 1.42, motion = 'idle', action = 'idle',
-  stridePhase, live = true, timeShift = 0, seatKind = 'floor',
+  stridePhase, playback, live = true, timeShift = 0, seatKind = 'floor',
 }: Props) {
   const original = useGLTF(RIG_AVATAR_URL);
   const model = useGLTF(MONK_URL);
@@ -358,6 +346,7 @@ export default function SkinAvatar({
   const benchBlend = useRef(0);
   const teaCup = useRef<THREE.Group>(null);
   const teaTime = useRef(0);
+  const greetTime = useRef(0);
   const teaPoints = useMemo(() => ({
     table: new THREE.Vector3(), mouth: new THREE.Vector3(), grip: new THREE.Vector3(),
     cup: new THREE.Vector3(), target: new THREE.Vector3(),
@@ -429,13 +418,14 @@ export default function SkinAvatar({
 
   useFrame(({ clock }, dt) => {
     const t = clock.getElapsedTime() + (timeShift ?? 0);
-    const currentMotion = live ? playerMotion.motion : motion;
+    const currentMotion = live ? playerMotion.motion : playback?.current.motion ?? motion;
     const currentAction = action === 'incense' ? action
-      : live && playerMotion.action !== 'idle' ? playerMotion.action : action;
+      : live && playerMotion.action !== 'idle' ? playerMotion.action : playback?.current.action ?? action;
     const seat = live ? playerMotion.seatKind : seatKind;
     const drinking = currentAction === 'sitting' && seat === 'tea';
     teaTime.current = drinking ? (teaTime.current + dt) % 15 : 0;
-    const phase = live ? playerMotion.phase : stridePhase ?? t * 6.4;
+    greetTime.current = currentAction === 'greet' ? greetTime.current + Math.min(dt, 0.05) : 0;
+    const phase = live ? playerMotion.phase : playback?.current.phase ?? stridePhase ?? t * 6.4;
     const isBow = currentAction === 'kowtow' || currentAction === 'bowing';
     const isIncense = currentAction === 'incense';
     const ritual = isBow ? avatar.bow : isIncense ? avatar.offer : undefined;
@@ -554,6 +544,20 @@ export default function SkinAvatar({
     }
     group.position.x += ((walking ? stride * 0.012 : 0) - group.position.x) * Math.min(1, dt * 8);
     group.scale.y += ((floorSeated ? 0.86 : 1) - group.scale.y) * Math.min(1, dt * 8);
+    if (currentAction === 'greet' && avatar.spine && avatar.head) {
+      const p = greetTime.current / GREET_SECONDS;
+      const ease = THREE.MathUtils.smoothstep;
+      const clasp = ease(p, 0, 0.29) * (1 - ease(p, 0.69, 0.95));
+      const bow = ease(p, 0.24, 0.49) * (1 - ease(p, 0.55, 0.79));
+      avatar.spine.rotateX(R(23) * bow);
+      avatar.head.rotateX(R(8) * bow);
+      for (const [index, [shoulder, elbow, hand]] of avatar.arms.entries()) {
+        const { target, displacement } = reachTools;
+        avatar.spine.localToWorld(target.set(index === 0 ? 0.036 : -0.036, 0.23, 0.25));
+        hand.getWorldPosition(displacement).lerp(target, clasp);
+        reachArm(shoulder, elbow, hand, displacement, reachTools);
+      }
+    }
     const cup = teaCup.current;
     if (cup?.parent) {
       cup.visible = drinking;

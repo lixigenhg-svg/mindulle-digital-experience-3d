@@ -1,3 +1,4 @@
+import { Encounter, facePoint, npcEncounterPoints, turnToward } from '../avatar/encounter';
 import { planWalk } from './walkRoute';
 /**
  * LocalPlayer.tsx —— 本地玩家：位移、朝向、第三人称相机、输入（点地移动 / 拖拽旋转 / 双指缩放）
@@ -190,8 +191,8 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
   /** 上次写入 localStorage 的时间（节流用） */
   const lastSave = useRef(0);
   /** 相遇行礼：行礼结束时间 / 下次可再行礼的时间 */
-  const greetUntil = useRef(0);
-  const greetCool = useRef(0);
+  const encounter = useRef(new Encounter());
+  const encounterResume = useRef<THREE.Vector3 | null>(null);
   // 坐在什么上面（茶垫 / 长凳 / 蒲团），传给姿态函数决定坐姿细节
   const [seatKindState, setSeatKindState] = useState<'floor' | 'tea' | 'bench'>('floor');
   const seatKindRef = useRef<'floor' | 'tea' | 'bench'>('floor');
@@ -536,18 +537,27 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
 
     // —— 玩家之间：不能互相穿过，相遇时倾身抱拳行礼再错开 ——
     const peers = [...store.peers.values()];
-    let nearPeer = false;
-    for (const p of peers) {
-      const dx = s.pos.x - p.x;
-      const dz = s.pos.z - p.z;
-      if (dx * dx + dz * dz < 1.55 * 1.55) { nearPeer = true; break; }
-    }
     const nowMs = performance.now();
-    if (nearPeer && nowMs > greetCool.current) {
-      greetUntil.current = nowMs + 1500;      // 行礼 1.5 秒
-      greetCool.current = nowMs + 6000;       // 同一人 6 秒内不再重复行礼
+    const meet = encounter.current;
+    const stage = meet.update(s.pos, [...peers, ...npcEncounterPoints.values()],
+      machine.state === 'idle' && !touring, dt);
+    const greeting = stage === 'face' || stage === 'bow' || stage === 'turn';
+    if (greeting && meet.target) {
+      const facing = facePoint(s.pos, meet.target);
+      s.facing = turnToward(s.facing, stage === 'turn' ? facing + Math.PI : facing, dt * 7);
+      s.anim = 'idle';
     }
-    const greeting = nowMs < greetUntil.current;
+    if (stage === 'leave' && meet.target) {
+      encounterResume.current = s.target ? waypoints.current[waypoints.current.length - 1] ?? s.target : null;
+      const away = facePoint(s.pos, meet.target) + Math.PI;
+      setWalkTarget(new THREE.Vector3(s.pos.x - Math.sin(away) * 0.78, 0,
+        s.pos.z - Math.cos(away) * 0.78), 0.10);
+      move.set(0, 0, 0);
+    } else if (!greeting && !s.target && encounterResume.current) {
+      const goal = encounterResume.current;
+      encounterResume.current = null;
+      if (!moving) setWalkTarget(goal, 0.025);
+    }
     // 互为障碍：把别人的身体推开，谁也别从对方身上穿过去
     for (const p of peers) {
       const dx = s.pos.x - p.x;
@@ -561,7 +571,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
       }
     }
 
-    if (moving && !touring && !greeting) {
+    if (moving && !touring && !greeting && stage !== 'leave') {
       move.normalize();
       if (lock !== 'translate') {
         const x = s.pos.x;
@@ -595,7 +605,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     playerMotion.phase = s.walkPhase;
     if (!(window as unknown as { __MD_LOCK__?: boolean }).__MD_LOCK__) {
       playerMotion.action = machine.state === 'sitting' && (activeTeaSeat.current || activeBench.current)
-        ? 'sitting' : greeting ? 'greet' : action;
+        ? 'sitting' : stage === 'bow' ? 'greet' : action;
     }
     // 每秒记一次站位，刷新后能回到原处
     if (nowMs - lastSave.current > 1000) {
