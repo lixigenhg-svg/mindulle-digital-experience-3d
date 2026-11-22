@@ -1,13 +1,4 @@
-/**
- * SkinAvatar.tsx —— 玩家角色：门童同款雕刻稿外观 + 原项目 17 根真骨骼
- *
- * 做法：把 avatar.glb（17 骨、12 块已蒙皮服装件）静止姿态下的**世界空间**顶点
- * 建一张哈希网格，再让雕刻稿（avatar2.glb，单网格 8.3k 顶点）的每个顶点
- * 去找网格上最近的和尚顶点，直接继承它的骨骼索引与权重，最后沿雕刻稿的
- * 拓扑做两轮权重平滑。这样雕刻稿的袖子、袍摆会自然跟着各自最近的那块布料走，
- * 不会出现"整条裙摆被两条大腿各拉一半"的撕裂。
- */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -15,9 +6,8 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { playerMotion } from './animState';
 
 export const RIG_AVATAR_URL = 'assets/models/avatar.glb';
-export const SCULPT_AVATAR_URL = 'assets/models/avatar-alt/avatar2.glb';
-
-type Pose = 'stand' | 'walk' | 'pray' | 'bow' | 'sit' | 'sitTap';
+const MONK_URL = 'assets/models/little-monk-yellow.glb';
+const MONK_HEIGHT = 1.686;
 
 const BONE_NAMES = [
   'hips', 'spine', 'chest', 'neck', 'head',
@@ -277,528 +267,118 @@ function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt 
   } as Record<string, [number, number, number]>;
 }
 
-/** 用哈希网格找最近的已蒙皮顶点，把骨骼权重搬过来（全部在根节点局部空间里算） */
-function transferWeights(
-  src: THREE.SkinnedMesh[],
-  dst: THREE.BufferGeometry,
-  targetBones: THREE.Bone[],
-) {
-  const CELL = 0.04;
-  const grid = new Map<string, { p: THREE.Vector3; idx: number[]; w: number[] }[]>();
-  const nameToIdx = new Map<string, number>();
-  targetBones.forEach((b, i) => nameToIdx.set(norm(b.name), i));
+// The original rig defines the site's procedural pose axes. Convert those
+// rotations into the new model's bone space for actions without baked clips.
+export default function SkinAvatar({
+  position = [0, 0, 0], rotationY = 0, height = 1.42, motion = 'idle', action = 'idle',
+  stridePhase, live = true, timeShift = 0, seatKind = 'floor',
+}: Props) {
+  const original = useGLTF(RIG_AVATAR_URL);
+  const model = useGLTF(MONK_URL);
+  const offset = useRef<THREE.Group>(null);
+  const previous = useRef<Props['action']>();
+  const delta = useMemo(() => new THREE.Quaternion(), []);
+  const euler = useMemo(() => new THREE.Euler(), []);
 
-  const mInv = new THREE.Matrix4().copy(targetBones[0].parent!.matrixWorld).invert();
-
-  src.forEach((mesh) => {
-    mesh.updateMatrixWorld(true);
-    mesh.skeleton.update();
-    const geom = mesh.geometry;
-    const pos = geom.getAttribute('position') as THREE.BufferAttribute;
-    const si = geom.getAttribute('skinIndex') as THREE.BufferAttribute;
-    const sw = geom.getAttribute('skinWeight') as THREE.BufferAttribute;
-    if (!pos || !si || !sw) return;
-    for (let i = 0; i < pos.count; i++) {
-      const p = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(mesh.bindMatrix);
-      p.applyMatrix4(mesh.matrixWorld).applyMatrix4(mInv);
-      const out = new THREE.Vector3();
-      for (let k = 0; k < 4; k++) {
-        const w = sw.getComponent(i, k);
-        if (!w) continue;
-        const bone = mesh.skeleton.bones[si.getComponent(i, k)];
-        const q = p.clone().applyMatrix4(mesh.skeleton.boneInverses[si.getComponent(i, k)]).applyMatrix4(bone.matrixWorld).applyMatrix4(mInv);
-        out.addScaledVector(q, w);
-      }
-      const idx: number[] = [];
-      const wts: number[] = [];
-      for (let k = 0; k < 4; k++) {
-        const w = sw.getComponent(i, k);
-        if (w <= 0.0001) continue;
-        const bi = nameToIdx.get(norm(mesh.skeleton.bones[si.getComponent(i, k)].name));
-        if (bi === undefined) continue;
-        idx.push(bi);
-        wts.push(w);
-      }
-      if (!idx.length) continue;
-      const key = `${Math.floor(out.x / CELL)}|${Math.floor(out.y / CELL)}|${Math.floor(out.z / CELL)}`;
-      let arr = grid.get(key);
-      if (!arr) { arr = []; grid.set(key, arr); }
-      arr.push({ p: out, idx, w: wts });
-    }
-  });
-
-  const pos = dst.getAttribute('position') as THREE.BufferAttribute;
-  const skinIndex = new Uint16Array(pos.count * 4);
-  const skinWeight = new Float32Array(pos.count * 4);
-
-  // 每根骨在根节点局部空间里的静止位置（用于分区闸门）
-  const bpos: Record<string, THREE.Vector3> = {};
-  targetBones.forEach((b) => {
-    const w = new THREE.Vector3();
-    b.getWorldPosition(w);
-    bpos[norm(b.name)] = w.applyMatrix4(mInv);
-  });
-
-  for (let i = 0; i < pos.count; i++) {
-    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-    const cx = Math.floor(v.x / CELL), cy = Math.floor(v.y / CELL), cz = Math.floor(v.z / CELL);
-    let best = Infinity;
-    let bi1: number[] = [0], bw1: number[] = [1];
-    for (let r = 0; r <= 2 && best === Infinity; r++) {
-      for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-        const arr = grid.get(`${cx + dx}|${cy + dy}|${cz + dz}`);
-        if (!arr) continue;
-        for (const item of arr) {
-          const d = item.p.distanceToSquared(v);
-          if (d < best) { best = d; bi1 = item.idx; bw1 = item.w; }
-        }
-      }
-    }
-
-    // 分区闸门：手臂骨只允许出现在两侧袖管区域，避免袍身/领口被手臂拉成尖刺
-    const side = v.x < 0 ? 'l' : 'r';
-    const armOk = Math.abs(v.x) > 0.115 && v.y > 0.45 && v.y < 0.97;
-    const legOk = v.y < 0.66;
-    const kept: [number, number][] = [];
-    for (let k = 0; k < Math.min(4, bi1.length); k++) {
-      const bi = bi1[k];
-      const nm = norm(targetBones[bi]?.name ?? '');
-      const isArm = /arm|hand/.test(nm);
-      const isLeg = /thigh|shin|foot/.test(nm);
-      if (isArm && !armOk) continue;
-      if (isLeg && !legOk) continue;
-      // 手臂骨距离过远（>0.22）也不给权重
-      if (isArm) {
-        const bp = bpos[nm];
-        if (bp && bp.distanceTo(v) > 0.26) continue;
-      }
-      kept.push([bi, bw1[k]]);
-    }
-    if (!kept.length) {
-      // 退回到最合适的躯干骨
-      const fallback = v.y > 0.97 ? 'head' : v.y > 0.86 ? 'chest' : v.y > 0.7 ? 'spine' : 'hips';
-      const bi = targetBones.findIndex((b) => norm(b.name) === fallback);
-      kept.push([bi >= 0 ? bi : 0, 1]);
-    }
-    const total = kept.reduce((s2, x) => s2 + x[1], 0) || 1;
-    for (let k = 0; k < 4; k++) {
-      skinIndex[i * 4 + k] = kept[k] ? kept[k][0] : 0;
-      skinWeight[i * 4 + k] = kept[k] ? kept[k][1] / total : 0;
-    }
-  }
-
-  // 按“到骨段距离”二次过滤四肢权重：只有真正贴在骨段附近的顶点才允许跟手臂/腿走
-  const seg = (a: THREE.Vector3, b: THREE.Vector3, p: THREE.Vector3) => {
-    const ab = b.clone().sub(a);
-    const t = Math.max(0, Math.min(1, p.clone().sub(a).dot(ab) / (ab.lengthSq() || 1)));
-    return a.clone().addScaledVector(ab, t).distanceTo(p);
-  };
-  const armSeg: Record<string, THREE.Vector3[]> = {};
-  const legSeg: Record<string, THREE.Vector3[]> = {};
-  for (const side of ['L', 'R']) {
-    armSeg[side.toLowerCase()] = [
-      bpos['upperarm' + side.toLowerCase()], bpos['forearm' + side.toLowerCase()], bpos['hand' + side.toLowerCase()],
-    ].filter(Boolean) as THREE.Vector3[];
-    legSeg[side.toLowerCase()] = [
-      bpos['thigh' + side.toLowerCase()], bpos['shin' + side.toLowerCase()], bpos['foot' + side.toLowerCase()],
-    ].filter(Boolean) as THREE.Vector3[];
-  }
-  const distToChain = (chain: THREE.Vector3[], p: THREE.Vector3) => {
-    let d = Infinity;
-    for (let k = 0; k < chain.length - 1; k++) d = Math.min(d, seg(chain[k], chain[k + 1], p));
-    return d;
-  };
-  for (let i = 0; i < pos.count; i++) {
-    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-    const side = v.x < 0 ? 'l' : 'r';
-    const armD = distToChain(armSeg[side] ?? [], v);
-    const legD = distToChain(legSeg[side] ?? [], v);
-    const armOk = armD < 0.062;
-    const legOk = legD < 0.072;
-    let sum = 0;
-    for (let k = 0; k < 4; k++) {
-      const bi = skinIndex[i * 4 + k];
-      const nm = norm(targetBones[bi]?.name ?? '');
-      const isArm = /arm|hand/.test(nm);
-      const isLeg = /thigh|shin|foot/.test(nm);
-      if ((isArm && !armOk) || (isLeg && !legOk)) { skinWeight[i * 4 + k] = 0; }
-      sum += skinWeight[i * 4 + k];
-    }
-    if (sum < 0.0001) {
-      skinWeight.fill(0, i * 4, i * 4 + 4);
-      skinIndex.fill(0, i * 4, i * 4 + 4);
-      skinWeight[i * 4] = 1; // 交给下面的躯干解析权重覆盖
-    }
-  }
-
-  // 躯干改解析权重（按高度在 hips→spine→chest→neck→head 之间线性过渡），
-  // 这是唯一能保证弯腰时袍面平滑、不被个别顶点拉成尖刺的做法
-  const spineChain = ['hips', 'spine', 'chest', 'neck', 'head'];
-  const chainIdx = spineChain.map((n) => targetBones.findIndex((b) => norm(b.name) === n));
-  const chainY = spineChain.map((n) => bpos[n]?.y ?? 0);
-  for (let i = 0; i < pos.count; i++) {
-    const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-    const armNear = distToChain(armSeg[v.x < 0 ? 'l' : 'r'] ?? [], v) < 0.13;
-    if (armNear) continue;
-    // 找相邻两根高度
-    let lo = 0;
-    for (let k = 0; k < chainY.length - 1; k++) if (v.y >= chainY[k]) lo = k;
-    const y0 = chainY[lo], y1 = chainY[Math.min(lo + 1, chainY.length - 1)];
-    let t = y1 > y0 ? (v.y - y0) / (y1 - y0) : 1;
-    t = Math.max(0, Math.min(1, t));
-    // 腰部以下（袍摆）全部锁死在髋骨：否则一脚踩住、一脚抬起时，
-    // 邻近顶点一个跟脊柱一个留髋部，袍面会被拉成长条碎片
-    if (v.y < 0.72) {
-      for (let k = 0; k < 4; k++) { skinIndex[i * 4 + k] = 0; skinWeight[i * 4 + k] = 0; }
-      const hi = chainIdx[0];
-      if (hi >= 0) { skinIndex[i * 4] = hi; skinWeight[i * 4] = 1; }
-      continue;
-    }
-    if (v.y < 0.30) continue;
-    const wT = Math.max(0, Math.min(1, (v.y - 0.30) / 0.28));
-    const b0 = chainIdx[lo], b1 = chainIdx[Math.min(lo + 1, chainIdx.length - 1)];
-    const blended: [number, number][] = [];
-    for (let k = 0; k < 4; k++) {
-      const w = skinWeight[i * 4 + k] * (1 - wT);
-      if (w > 0.0005) blended.push([skinIndex[i * 4 + k], w]);
-    }
-    if (wT > 0) {
-      blended.push([b0 >= 0 ? b0 : 0, wT * (1 - t)]);
-      if (t > 0) blended.push([b1 >= 0 ? b1 : 0, wT * t]);
-    }
-    const top = blended.sort((a2, b2) => b2[1] - a2[1]).slice(0, 4);
-    const total2 = top.reduce((s2, x) => s2 + x[1], 0) || 1;
-    for (let k = 0; k < 4; k++) { skinIndex[i * 4 + k] = 0; skinWeight[i * 4 + k] = 0; }
-    top.forEach(([bi, w], k) => { skinIndex[i * 4 + k] = bi; skinWeight[i * 4 + k] = w / total2; });
-  }
-
-  // 袖子/手臂权重平滑过渡：原来按"到臂骨距离 <0.062"硬切，
-  // 边界两侧相邻顶点一个跟手臂、一个留在躯干，一摆臂就撕成条。改成距离渐变。
-  {
-    const chestI = targetBones.findIndex((b) => norm(b.name) === 'chest');
-    for (let i = 0; i < pos.count; i++) {
-      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-      if (v.y < 0.55) continue;
-      const armD = distToChain(armSeg[v.x < 0 ? 'l' : 'r'] ?? [], v);
-      const f = Math.max(0, Math.min(1, (0.085 - armD) / 0.045)); // 贴骨=1，离开=0
-      if (f >= 0.999) continue;
-      let armW = 0;
-      for (let k = 0; k < 4; k++) {
-        const nm = norm(targetBones[skinIndex[i * 4 + k]]?.name ?? '');
-        if (/arm|hand/.test(nm)) armW += skinWeight[i * 4 + k];
-      }
-      if (armW <= 0.0001) continue;
-      const keep = armW * f;
-      const give = armW - keep;
-      for (let k = 0; k < 4; k++) {
-        const nm = norm(targetBones[skinIndex[i * 4 + k]]?.name ?? '');
-        if (/arm|hand/.test(nm)) skinWeight[i * 4 + k] *= f;
-      }
-      // 让出来的份额交给胸腔，并归一化
-      const slot = skinWeight[i * 4 + 3] > 0.0001 && !/arm|hand/.test(norm(targetBones[skinIndex[i * 4 + 3]]?.name ?? '')) ? 3 : 0;
-      if (chestI >= 0) { skinIndex[i * 4 + slot] = chestI; skinWeight[i * 4 + slot] += give; }
-      let total = 0;
-      for (let k = 0; k < 4; k++) total += skinWeight[i * 4 + k];
-      if (total > 0) for (let k = 0; k < 4; k++) skinWeight[i * 4 + k] /= total;
-    }
-  }
-
-  // 下半身（袍摆 + 腿）改解析权重：只用 hips 与左右大腿三根骨，
-  // 按高度从髋部渐变到腿、按横向位置从右腿渐变到左腿。
-  // 原来这些顶点靠"最近已蒙皮顶点"迁移，接缝处相邻顶点被分给不同腿骨，
-  // 一迈腿就被撕成碎条 —— 这也是"悬空 + 脚不像人走路"的根源。
-  {
-    const hipI = targetBones.findIndex((b) => norm(b.name) === 'hips');
-    const tLI = targetBones.findIndex((b) => norm(b.name) === 'thighl');
-    const tRI = targetBones.findIndex((b) => norm(b.name) === 'thighr');
-    const fLI = targetBones.findIndex((b) => norm(b.name) === 'footl');
-    const fRI = targetBones.findIndex((b) => norm(b.name) === 'footr');
-    const sLI = targetBones.findIndex((b) => norm(b.name) === 'shinl');
-    const sRI = targetBones.findIndex((b) => norm(b.name) === 'shinr');
-    const TOP = 0.56, BOT = 0.05;
-    for (let i = 0; i < pos.count; i++) {
-      const v = new THREE.Vector3().fromBufferAttribute(pos, i);
-      if (v.y >= TOP) continue;
-      if (distToChain(armSeg[v.x < 0 ? 'l' : 'r'] ?? [], v) < 0.13) continue; // 别动袖口/手
-      const t = Math.max(0, Math.min(1, (TOP - v.y) / (TOP - BOT)));
-      const legShare = 0.9 * t;
-      const lat = Math.max(0, Math.min(1, 0.5 + v.x / 0.22)); // 0 = 全左腿, 1 = 全右腿
-      // 袍摆（膝盖以上）跟随"两条腿的平均"，整片袍子才不会从中间裂成条；
-      // 越往下越偏向各自那条腿，到脚踝完全分左右，这样迈步能看到脚交替。
-      const split = Math.max(0, Math.min(1, (0.24 - v.y) / 0.16));
-      const mix = 0.5 + (lat - 0.5) * split;
-      // 小腿参与一点：站直走路时小腿不转，不影响步态；
-      // 坐/行礼时小腿后收，袍摆才跟着折起来
-      const shf = Math.max(0, Math.min(1, (0.34 - v.y) / 0.18)) * 0.55;
-      const shinI = mix > 0.5 ? sRI : sLI;
-      const rest = 1 - shf;
-      const w: [number, number][] = [
-        [hipI, 1 - legShare],
-        [tLI, legShare * (1 - mix) * rest],
-        [tRI, legShare * mix * rest],
-        [shinI, legShare * shf],
-      ];
-      const top = w.filter((x) => x[1] > 0.0005);
-      const total = top.reduce((a, b) => a + b[1], 0) || 1;
-      for (let k = 0; k < 4; k++) { skinIndex[i * 4 + k] = 0; skinWeight[i * 4 + k] = 0; }
-      top.slice(0, 4).forEach(([bi, wt], k) => {
-        if (bi < 0) return;
-        skinIndex[i * 4 + k] = bi;
-        skinWeight[i * 4 + k] = wt / total;
-      });
-    }
-  }
-
-  // 沿拓扑平滑两轮，减小接缝
-  const idxA = dst.getIndex();
-  if (idxA) {
-    const nbr = new Map<number, number[]>();
-    for (let i = 0; i < idxA.count; i += 3) {
-      const a = idxA.getX(i), b = idxA.getX(i + 1), c = idxA.getX(i + 2);
-      const push = (x: number, y: number) => { const l = nbr.get(x) ?? nbr.set(x, []).get(x)!; l.push(y); };
-      push(a, b); push(b, c); push(c, a);
-    }
-    for (let pass = 0; pass < 6; pass++) {
-      const outI = skinIndex.slice();
-      const outW = skinWeight.slice();
-      for (let i = 0; i < pos.count; i++) {
-        const list = nbr.get(i);
-        if (!list || !list.length) continue;
-        const accum = new Map<number, number>();
-        for (let k = 0; k < 4; k++) accum.set(skinIndex[i * 4 + k], (accum.get(skinIndex[i * 4 + k]) ?? 0) + skinWeight[i * 4 + k] * 0.55);
-        const share = 0.45 / list.length;
-        for (const j of list) for (let k = 0; k < 4; k++) accum.set(skinIndex[j * 4 + k], (accum.get(skinIndex[j * 4 + k]) ?? 0) + skinWeight[j * 4 + k] * share);
-        const top = [...accum.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
-        const total = top.reduce((s, x) => s + x[1], 0) || 1;
-        for (let k = 0; k < 4; k++) {
-          outI[i * 4 + k] = top[k] ? top[k][0] : 0;
-          outW[i * 4 + k] = top[k] ? top[k][1] / total : 0;
-        }
-      }
-      skinIndex.set(outI);
-      skinWeight.set(outW);
-    }
-  }
-
-  dst.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndex, 4));
-  dst.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
-  return grid.size;
-}
-
-function Avatar({ position = [0, 0, 0], rotationY = 0, height = 1.42, motion = 'idle', action = 'idle', stridePhase, live = true, timeShift = 0, seatKind = 'floor' }: Props) {
-  const rig = useGLTF(RIG_AVATAR_URL);
-  const sculpt = useGLTF(SCULPT_AVATAR_URL);
-  const [ready, setReady] = useState(false);
-  const root = useRef<THREE.Group>(null);
-  const bones = useRef<Record<string, THREE.Bone>>({});
-  const rest = useRef<Record<string, THREE.Euler>>({});
-  const cur = useRef<Record<string, [number, number, number]>>({});
-
-  const prepared = useMemo(() => {
-    const scene = cloneSkeleton(rig.scene);
-    const map: Record<string, THREE.Bone> = {};
-    const restMap: Record<string, THREE.Euler> = {};
-    const skinned: THREE.SkinnedMesh[] = [];
-
-    scene.traverse((o) => {
-      const b = o as THREE.Bone;
-      if (b.isBone) {
-        const alias = BONE_NAMES.find((n) => norm(n) === norm(b.name));
-        if (alias) { map[alias] = b; restMap[alias] = b.rotation.clone(); }
-        return;
-      }
-      const m = o as THREE.SkinnedMesh;
-      if (m.isSkinnedMesh) {
-        skinned.push(m);
-        m.visible = true; // 原生网格自带正确蒙皮，行礼/盘腿不再碎
+  const avatar = useMemo(() => {
+    const scene = cloneSkeleton(model.scene);
+    const facing = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+    const bones = new Map<string, THREE.Bone>();
+    let incense: THREE.Object3D | undefined;
+    scene.updateMatrixWorld(true);
+    scene.traverse((object) => {
+      if ((object as THREE.Bone).isBone) bones.set(norm(object.name), object as THREE.Bone);
+      if (object.name === 'IncenseSticks') incense = object;
+      const mesh = object as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.castShadow = true;
+        mesh.receiveShadow = false;
+        mesh.frustumCulled = false;
       }
     });
+    if (incense) incense.visible = false;
 
-    // 雕刻稿：烘焙世界变换后，把身高/脚下/中线对齐到 avatar.glb 的局部空间
-    let found: THREE.Mesh | null = null;
-    sculpt.scene.traverse((o) => { if (!found && (o as THREE.Mesh).isMesh) found = o as unknown as THREE.Mesh; });
-    const srcMesh = found as unknown as THREE.Mesh;
-    sculpt.scene.updateMatrixWorld(true);
-    const geo = srcMesh.geometry.clone();
-    geo.applyMatrix4(srcMesh.matrixWorld);
-    geo.computeBoundingBox();
-    const box = geo.boundingBox!;
-    const h = box.max.y - box.min.y;
-    const rigBox = new THREE.Box3().setFromObject(skinned[0].parent ?? scene);
-    const targetH = 1.45;
-    const s = targetH / h;
-    geo.scale(s, s, s);
-    geo.computeBoundingBox();
-    const b2 = geo.boundingBox!;
-    geo.translate(-(b2.min.x + b2.max.x) / 2, -b2.min.y, -(b2.min.z + b2.max.z) / 2);
+    const joints = BONE_NAMES.flatMap((name) => {
+      const source = original.scene.getObjectByName(name);
+      const opposite = name.replace(/\.([LR])$/, (_, side) => side === 'L' ? '.R' : '.L');
+      const bone = bones.get(norm(opposite));
+      if (!source || !bone) return [];
+      const rest = bone.quaternion.clone();
+      const basis = bone.getWorldQuaternion(new THREE.Quaternion()).premultiply(facing).invert()
+        .multiply(source.getWorldQuaternion(new THREE.Quaternion()));
+      return [{
+        bone, rest, basis, inverseBasis: basis.clone().invert(),
+        sourceRest: source.rotation.clone(), inverseSourceRest: source.quaternion.clone().invert(),
+        key: poseKey(name), angles: [0, 0, 0],
+      }];
+    });
 
-    // 把雕刻稿换回根节点局部空间
-    const invRoot = new THREE.Matrix4().copy(scene.matrixWorld).invert();
-    geo.applyMatrix4(invRoot);
-
-    const mesh = new THREE.SkinnedMesh(geo, srcMesh.material as THREE.Material);
-    mesh.castShadow = true;
-    mesh.receiveShadow = false; // 自投影阴影贴图分辨率有限，会在袍面上糊成黑斑
-    mesh.frustumCulled = false;
-
-    const result = transferWeights(skinned, geo, skinned[0].skeleton.bones);
-    // scene.add(mesh);
-    scene.updateMatrixWorld(true);
-    mesh.bind(skinned[0].skeleton, new THREE.Matrix4());
-
-    // 用雕刻稿的顶点色给原生服装上色，保留金色袈裟的观感
-    {
-      const col = geo.getAttribute('color') as THREE.BufferAttribute | undefined;
-      if (col) {
-        const cell = 0.05;
-        const cgrid = new Map<string, number[]>();
-        for (let i = 0; i < geo.attributes.position.count; i++) {
-          const x = geo.attributes.position.getX(i), y = geo.attributes.position.getY(i), z = geo.attributes.position.getZ(i);
-          const key = `${Math.floor(x / cell)}|${Math.floor(y / cell)}|${Math.floor(z / cell)}`;
-          const arr = cgrid.get(key) ?? [];
-          arr.push(i); cgrid.set(key, arr);
-        }
-        const inv = new THREE.Matrix4().copy(scene.matrixWorld).invert();
-        const tmp = new THREE.Vector3();
-        for (const sm of skinned) {
-          const nm = (sm.name || '').toLowerCase();
-          const tone = nm.includes('head') || nm.includes('mitten') ? 0xf2c9a8
-            : nm.includes('shoe') ? 0x6b4a2f
-            : nm.includes('collar') || nm.includes('hem') ? 0xf4e6c8
-            : nm.includes('wrap') ? 0xd98319
-            : 0xe8a12a;
-          const mats0 = Array.isArray(sm.material) ? sm.material : [sm.material];
-          for (const mm of mats0) {
-            const m2 = (mm as THREE.MeshStandardMaterial).clone();
-            m2.vertexColors = false; m2.map = null; m2.color.setHex(tone);
-            m2.roughness = 0.85; m2.metalness = 0.0;
-            (sm as any).material = m2;
-          }
-          const g2 = sm.geometry;
-          if (!g2.getAttribute('color')) {
-            const n = g2.attributes.position.count;
-            const ca = new Float32Array(n * 3);
-            for (let i = 0; i < n; i++) {
-              tmp.fromBufferAttribute(g2.attributes.position, i).applyMatrix4(sm.matrixWorld).applyMatrix4(inv);
-              const cx = Math.floor(tmp.x / cell), cy = Math.floor(tmp.y / cell), cz = Math.floor(tmp.z / cell);
-              let bi = -1, bd = Infinity;
-              for (let r = 0; r <= 3 && bi < 0; r++) {
-                for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
-                  const arr = cgrid.get(`${cx + dx}|${cy + dy}|${cz + dz}`);
-                  if (!arr) continue;
-                  for (const j of arr) {
-                    const d = (geo.attributes.position.getX(j) - tmp.x) ** 2 + (geo.attributes.position.getY(j) - tmp.y) ** 2 + (geo.attributes.position.getZ(j) - tmp.z) ** 2;
-                    if (d < bd) { bd = d; bi = j; }
-                  }
-                }
-              }
-              if (bi >= 0) { ca[i * 3] = col.getX(bi); ca[i * 3 + 1] = col.getY(bi); ca[i * 3 + 2] = col.getZ(bi); }
-              else { ca[i * 3] = 0.85; ca[i * 3 + 1] = 0.62; ca[i * 3 + 2] = 0.28; }
-            }
-            g2.setAttribute('color', new THREE.BufferAttribute(ca, 3));
-          }
-          const mats = Array.isArray(sm.material) ? sm.material : [sm.material];
-          for (const mm of mats) {
-            const m2 = (mm as THREE.MeshStandardMaterial).clone();
-            m2.vertexColors = true;
-            m2.map = null;
-            m2.roughness = 0.8; m2.metalness = 0.02;
-            (sm as any).material = m2;
-          }
-        }
-      }
-    }
-
-    {
-      for (const sm of skinned) {
-        const nm = (sm.name || '').toLowerCase();
-        const tone = nm.includes('head') || nm.includes('mitten') ? 0xf0c9a6
-          : nm.includes('shoe') ? 0x6b4a2f
-          : nm.includes('collar') || nm.includes('hem') ? 0xf2e3c4
-          : nm.includes('wrap') ? 0xd9821a
-          : 0xe8a12a;
-        const mats0 = Array.isArray(sm.material) ? sm.material : [sm.material];
-        for (const mm of mats0) {
-          const m2 = (mm as THREE.MeshStandardMaterial).clone();
-          m2.vertexColors = false; m2.color = new THREE.Color(tone);
-          m2.roughness = 0.85; m2.metalness = 0.0;
-          (sm as any).material = m2;
-        }
-      }
-    }
-
-    bones.current = map;
-    rest.current = restMap;
-    (scene as any).userData.rig = result;
-    return scene;
-  }, [rig, sculpt]);
-
-  useEffect(() => { setReady(true); }, [prepared]);
+    const mixer = new THREE.AnimationMixer(scene);
+    const clip = (name: string) => {
+      const animation = THREE.AnimationClip.findByName(model.animations, name);
+      return animation ? mixer.clipAction(animation) : undefined;
+    };
+    return { scene, joints, mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
+  }, [model, original]);
 
   useFrame(({ clock }, dt) => {
-    if (!ready) return;
-    const t = clock.getElapsedTime() + timeShift;
-    // 本地玩家：直接读实时状态，避免 props 冻结
-    const m = live ? playerMotion.motion : motion;
-    // 动作以 React 传下来的 props 为准（共享对象只用来同步走路相位，动作值以这里更可靠）
-    const a = live && playerMotion.action !== 'idle' ? playerMotion.action : action;
-    const wt = live ? playerMotion.phase : stridePhase ?? t * 6.4;
-    const sk = seatKind ?? 'floor';
-    const target = poseOf(m, a, t, wt, sk);
-    const k = cur.current;
-    const lerp = Math.min(1, dt * 9);
+    const t = clock.getElapsedTime() + (timeShift ?? 0);
+    const currentMotion = live ? playerMotion.motion : motion;
+    const currentAction = live && playerMotion.action !== 'idle' ? playerMotion.action : action;
+    const phase = live ? playerMotion.phase : stridePhase ?? t * 6.4;
+    const isBow = currentAction === 'kowtow' || currentAction === 'bowing';
+    const isIncense = currentAction === 'incense';
+    const ritual = isBow ? avatar.bow : isIncense ? avatar.offer : undefined;
 
-    for (const name of BONE_NAMES) {
-      const b = bones.current[name];
-      const r = rest.current[name];
-      if (!b || !r) continue;
-      const tg = target[poseKey(name)] ?? [0, 0, 0];
-      const c = k[name] ?? [0, 0, 0];
-      c[0] += (tg[0] - c[0]) * lerp;
-      c[1] += (tg[1] - c[1]) * lerp;
-      c[2] += (tg[2] - c[2]) * lerp;
-      k[name] = c;
-      b.rotation.set(r.x + c[0], r.y + c[1], r.z + c[2]);
+    if (currentAction !== previous.current) {
+      avatar.mixer.stopAllAction();
+      if (ritual) {
+        const repeat = !live || currentAction === 'bowing';
+        ritual.reset().setLoop(repeat ? THREE.LoopRepeat : THREE.LoopOnce, repeat ? Infinity : 1);
+        ritual.clampWhenFinished = !repeat;
+        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? 2.6 : 3).play();
+        if (repeat && timeShift) {
+          const duration = ritual.getClip().duration;
+          ritual.time = ((timeShift % duration) + duration) % duration;
+        }
+      }
+      previous.current = currentAction;
     }
 
-    const sitting = a === 'wood_hit' || a === 'beads' || a === 'sitting' || a === 'kowtow' || a === 'bowing';
-    if (root.current) {
-      const kow = a === 'kowtow' || a === 'bowing';
-      // 俯身越深，整个人再往下压一点：跪直时脚贴在垫上，贴地时额头才够到垫面
-      const cyc = Math.sin(t * 1.05);
-      const down = Math.min(1, Math.max(0, (cyc + 0.95) / 1.15)) ** 0.9;
-      const want = kow
-        ? -0.02 - 0.46 * down
-        : a === 'sitting'
-          ? (seatKind === 'bench' ? -0.42 : -0.42)   // 盘腿要明显下沉；坐凳时脚垂到地面
-          : 0;
-      // 走路时重心上下起伏（每步一次），站定时归零
-      // 大腿前后摆会把两只脚同时抬高，这里按摆角把重心等量下沉，
-      // 保证迈步时脚掌始终踩在地面上，同时形成"落地最低、直立最高"的自然起伏
-      const swAmt = Math.sin(wt);
-      const bobY = m === 'walk' && a === 'idle' ? -(1 - Math.cos(swAmt * (17 * Math.PI / 180))) * 0.62 - 0.012 : 0;
-      // 左右重心摆动，每步一次，让脚步有重量感
-      const swayX = m === 'walk' && a === 'idle' ? Math.sin(wt) * 0.012 : 0;
-      const targetY = want + bobY;
-      root.current.position.y += (targetY - root.current.position.y) * Math.min(1, dt * 10);
-      // 坐下时整个人再压矮一截：宽袍把腿盖住了，只靠骨骼弯腿看不出"坐"，
-      // 用整体纵向压缩配合下沉，才能一眼看出是坐在地上/凳上。
-      const sq = a === 'sitting' ? (seatKind === 'bench' ? 0.86 : 0.86) : 1;
-      root.current.scale.y += (sq - root.current.scale.y) * Math.min(1, dt * 8);
-      // 俯身改成整个人绕脚前倾（刚性旋转），不做脊骨折叠：蒙皮不会被拉成碎片
-      const tiltWant = 0;
-      root.current.rotation.x += (tiltWant - root.current.rotation.x) * Math.min(1, dt * 8);
-      root.current.position.x += (swayX - root.current.position.x) * Math.min(1, dt * 8);
+    if (avatar.incense) avatar.incense.visible = isIncense;
+    if (ritual) {
+      avatar.mixer.update(dt);
+    } else {
+      const pose = poseOf(currentMotion, currentAction, t, phase, seatKind);
+      const blend = Math.min(1, dt * 9);
+      for (const joint of avatar.joints) {
+        const target = pose[joint.key] ?? [0, 0, 0];
+        const { angles, sourceRest } = joint;
+        for (let axis = 0; axis < 3; axis++) angles[axis] += (target[axis] - angles[axis]) * blend;
+        euler.set(sourceRest.x + angles[0], sourceRest.y + angles[1], sourceRest.z + angles[2], sourceRest.order);
+        delta.setFromEuler(euler).premultiply(joint.inverseSourceRest)
+          .premultiply(joint.basis).multiply(joint.inverseBasis);
+        joint.bone.quaternion.copy(joint.rest).multiply(delta);
+      }
     }
+
+    const group = offset.current;
+    if (!group) return;
+    const walking = currentMotion === 'walk' && currentAction === 'idle';
+    const stride = Math.sin(phase);
+    const bob = walking ? -(1 - Math.cos(stride * R(17))) * 0.62 - 0.012 : 0;
+    const seated = currentAction === 'sitting';
+    const y = (seated ? -0.42 : 0) + bob;
+    group.position.y += (y - group.position.y) * Math.min(1, dt * 10);
+    group.position.x += ((walking ? stride * 0.012 : 0) - group.position.x) * Math.min(1, dt * 8);
+    group.scale.y += ((seated ? 0.86 : 1) - group.scale.y) * Math.min(1, dt * 8);
   });
 
   return (
-    <group position={position} rotation-y={rotationY} ref={root}>
-      <primitive object={prepared} scale={height / 1.45} />
+    <group position={position} rotation-y={rotationY}>
+      <group ref={offset}>
+        <primitive object={avatar.scene} rotation-y={Math.PI} scale={height / MONK_HEIGHT} />
+      </group>
     </group>
   );
-}
-
-export default function SkinAvatar(props: Props) {
-  return <Avatar {...props} />;
 }
