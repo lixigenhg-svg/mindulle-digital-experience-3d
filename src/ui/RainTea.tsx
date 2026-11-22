@@ -27,6 +27,7 @@ function rainSound() {
 export default function RainTea({ invite, onClose }: { invite?: string; onClose: () => void }) {
   const [access, setAccess] = useState<Access>();
   const [entered, setEntered] = useState(false);
+  const [windowView, setWindowView] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sound, setSound] = useState(false);
@@ -154,7 +155,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
       className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none bg-[#101726] text-white">
       <div className="absolute inset-0">
         <Suspense fallback={null}>
-          <RainTeaScene key={entered ? 'inside' : 'preview'} purchased={entered && (access?.entitled === true || Boolean(invite && room))} guestPresent={guestPresent} />
+          <RainTeaScene key={entered ? 'inside' : 'preview'} purchased={entered && (access?.entitled === true || Boolean(invite && room))} guestPresent={guestPresent} windowView={windowView} />
         </Suspense>
       </div>
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#101726] via-transparent to-[#101726]/70" />
@@ -171,6 +172,12 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
           className="w-full max-w-md rounded-lg bg-slate-800 px-3 py-2 text-sm" />}
         <div className="flex flex-wrap justify-center gap-3">
           <button type="button" aria-pressed={sound} onClick={toggleSound} className="rounded-full bg-white/15 px-4 py-2">빗소리 {sound ? '끄기' : '듣기'}</button>
+          {entered && (
+            <button type="button" onClick={() => setWindowView(view => !view)}
+              className="rounded-full bg-white/15 px-4 py-2">
+              {windowView ? '찻상 보기' : '창밖 보기'}
+            </button>
+          )}
           {entered && access?.entitled === true && (
             <button type="button" disabled={inviting} onClick={() => {
               if (!shareUrl) void inviteFriend();

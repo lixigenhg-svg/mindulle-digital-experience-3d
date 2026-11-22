@@ -1,5 +1,5 @@
 import { Suspense, useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import SkinAvatar from '../avatar/SkinAvatar';
 import TeaHouse from './TeaHouse';
@@ -34,11 +34,60 @@ function Rain() {
   );
 }
 
-export default function RainTeaScene({ purchased, guestPresent }: { purchased: boolean; guestPresent: boolean }) {
+
+const TABLE_VIEW = new THREE.Vector3(0, 1.73, 2.45);
+const WINDOW_VIEW = new THREE.Vector3(0.48, 1.45, 0.85);
+const TABLE_FOCUS = new THREE.Vector3(0, 0.9, -0.32);
+const WINDOW_FOCUS = new THREE.Vector3(0, 1.85, -5);
+
+function RoomCamera({ windowView }: { windowView: boolean }) {
+  const { camera, size } = useThree();
+  const focus = useRef(TABLE_FOCUS.clone());
+  useFrame((_, dt) => {
+    const blend = 1 - Math.exp(-5 * dt);
+    camera.position.lerp(windowView ? WINDOW_VIEW : TABLE_VIEW, blend);
+    focus.current.lerp(windowView ? WINDOW_FOCUS : TABLE_FOCUS, blend);
+    camera.lookAt(focus.current);
+    if (camera instanceof THREE.PerspectiveCamera) {
+      const angle = size.width < size.height ? 68 : 53;
+      if (camera.fov !== angle) {
+        camera.fov = angle;
+        camera.updateProjectionMatrix();
+      }
+    }
+  });
+  return null;
+}
+
+function TeaSteam() {
+  const steam = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    steam.current?.children.forEach((wisp, i) => {
+      const rise = (clock.elapsedTime * 0.26 + i / 5) % 1;
+      wisp.position.set(Math.sin(rise * 4 + i) * rise * 0.092, rise * 0.43, i * 0.026 - 0.05);
+      wisp.scale.set(0.45 + rise, 1.24 + rise, 0.45 + rise);
+      if (wisp instanceof THREE.Mesh) wisp.material.opacity = Math.sin(Math.PI * rise) * 0.10;
+    });
+  });
+  return (
+    <group position={[0, 0.62, 0.06]} ref={steam}>
+      {[0, 1, 2, 3, 4].map(i => (
+        <mesh key={i}>
+          <sphereGeometry args={[0.048, 9, 6]} />
+          <meshBasicMaterial color="#fff2dc" transparent opacity={0} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+export default function RainTeaScene({ purchased, guestPresent, windowView }: {
+  purchased: boolean; guestPresent: boolean; windowView: boolean;
+}) {
   return (
     <Canvas
       dpr={[1, 1.4]}
-      camera={{ position: purchased ? [0, 1.75, 1.65] : [6, 2.75, 8], fov: 52 }}
+      camera={{ position: purchased ? TABLE_VIEW.toArray() : [6, 2.75, 8], fov: 52 }}
       onCreated={({ camera }) => camera.lookAt(0, purchased ? 0.68 : 1.4, purchased ? -0.6 : 0)}
     >
       <color attach="background" args={['#152338']} />
@@ -66,6 +115,12 @@ export default function RainTeaScene({ purchased, guestPresent }: { purchased: b
       ))}
       <TeaHouse position={[0, 0, 0]} openView />
       <Rain />
+      {purchased && <>
+        <RoomCamera windowView={windowView} />
+        <TeaSteam />
+        <pointLight position={[-1.65, 1.45, -0.75]} color="#f4a752" intensity={6} distance={3.5} />
+        <pointLight position={[1.7, 1.45, -0.75]} color="#efb46e" intensity={5} distance={3.5} />
+      </>}
       {purchased && (
         <Suspense fallback={null}>
           <SkinAvatar position={[-1.15, 0.095, 0.22]} rotationY={-Math.PI / 2}
