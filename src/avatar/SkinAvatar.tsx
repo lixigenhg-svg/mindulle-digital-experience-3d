@@ -381,7 +381,12 @@ export default function SkinAvatar({
     const arms = ['L', 'R'].map(side => (['UpperArm', 'Forearm', 'Hand'].map(
       name => bones.get(norm(`${name}.${side}`))!,
     ) as [THREE.Bone, THREE.Bone, THREE.Bone]));
-    return { scene, joints, legs, arms, spine: bones.get('spine'), head: bones.get('head'), incenseBone: bones.get('incense'), mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
+    const spine = bones.get('spine');
+    const head = bones.get('head');
+    const incenseBone = bones.get('incense');
+    const adjusted = [spine, head, incenseBone, ...arms.flat()].flatMap(bone => bone
+      ? [{ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }] : []);
+    return { scene, joints, legs, arms, spine, head, incenseBone, adjusted, mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
   }, [model, original]);
 
   useFrame(({ clock }, dt) => {
@@ -394,6 +399,14 @@ export default function SkinAvatar({
     const isIncense = currentAction === 'incense';
     const ritual = isBow ? avatar.bow : isIncense ? avatar.offer : undefined;
 
+    // The mixer skips constant channels. Restore its unmodified pose before
+    // evaluating the next frame so procedural corrections never accumulate.
+    if (previous.current === 'incense') {
+      for (const { bone, position, quaternion } of avatar.adjusted) {
+        bone.position.copy(position);
+        bone.quaternion.copy(quaternion);
+      }
+    }
     if (currentAction !== previous.current) {
       avatar.mixer.stopAllAction();
       if (ritual) {
@@ -415,6 +428,10 @@ export default function SkinAvatar({
       avatar.mixer.update(dt);
       const stick = avatar.incenseBone;
       if (isIncense && stick?.parent && avatar.incense) {
+        for (const { bone, position, quaternion } of avatar.adjusted) {
+          position.copy(bone.position);
+          quaternion.copy(bone.quaternion);
+        }
         const progress = ritual.time / ritual.getClip().duration;
         const reach = THREE.MathUtils.smoothstep(progress, 0.32, 0.61);
         const withdraw = 1 - THREE.MathUtils.smoothstep(progress, INCENSE_RELEASE, 0.94);
