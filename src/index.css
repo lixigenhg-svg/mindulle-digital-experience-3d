@@ -609,7 +609,7 @@ html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transi
 .ritual-count strong { font-size: 28px; font-weight: 500; }
 .woodfish-strike {
   width: 100%;
-  padding: 16px;
+  padding: 36px 16px 12px;
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -622,14 +622,18 @@ html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transi
   filter: drop-shadow(0 16px 18px #0007);
 }
 .woodfish-art img { display: block; width: 100%; pointer-events: none; }
-.woodfish-mallet { position: absolute; inset: 0; transform-origin: 91% 82%; }
+.woodfish-mallet {
+  position: absolute;
+  inset: 0;
+  transform-origin: 91% 82%;
+  transform: translateY(-64%) rotate(20deg);
+}
 .woodfish-struck { animation: woodfish-tap 340ms ease-in-out; }
 .woodfish-controls { display: flex; justify-content: center; gap: 12px; }
 @keyframes woodfish-tap {
-  16% { transform: rotate(-6deg); }
-  42% { transform: rotate(30deg); }
-  62% { transform: rotate(9deg); }
-  76% { transform: rotate(13deg); }
+  16% { transform: translateY(-64%) rotate(25deg); }
+  42% { transform: translateY(-64%) rotate(10deg); }
+  63% { transform: translateY(-64%) rotate(19deg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .woodfish-struck { animation: none; }
