@@ -16,11 +16,11 @@ describe('礼佛动作状态机', () => {
     expect(machine.isActive()).toBe(false);
   });
 
-  it('合掌进入 praying，1.5s 后自动回 idle', () => {
+  it('合掌进入 praying，2.5s 后自动回 idle', () => {
     machine.pray();
     expect(machine.state).toBe('praying');
     expect(events).toContain('pray');
-    machine.update(performance.now() + 1600);
+    machine.update(performance.now() + 2600);
     expect(machine.state).toBe('idle');
   });
 

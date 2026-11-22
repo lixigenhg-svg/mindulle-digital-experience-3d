@@ -5,7 +5,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { ActionState } from '../actions';
+import { PRAY_MS, type ActionState } from '../actions';
 import type { PeerState } from '../store';
 import SkinAvatar from '../avatar/SkinAvatar';
 import { Encounter, facePoint, npcEncounterPoints, turnToward } from '../avatar/encounter';
@@ -13,7 +13,6 @@ import { store } from '../store';
 import { readCushionSignal } from '../player/cushions';
 import type { Action, Motion } from '../avatar/animState';
 
-const PRAY_MS = 1500;
 const WOODFISH_MS = 700;
 
 export default function RemoteAvatar({ peer }: { peer: PeerState }) {

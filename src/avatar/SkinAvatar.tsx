@@ -1,5 +1,5 @@
 import { GREET_SECONDS } from './encounter';
-import { KOWTOW_DURATION_MS } from '../actions';
+import { KOWTOW_DURATION_MS, PRAY_MS } from '../actions';
 import { INCENSE_BURNER_Z, INCENSE_INSERT_Y, INCENSE_DURATION_MS, INCENSE_INSERT_DURATION_MS, INCENSE_RELEASE } from '../config';
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -27,6 +27,11 @@ function steadyIncenseClip(source: THREE.AnimationClip) {
     0, 0.23 * insertEnd, 0.61 * insertEnd, INCENSE_RELEASE * insertEnd,
     0.94 * insertEnd, 10.8, 12.25, 16.25, duration,
   ];
+  const clip = samplePoses(source, source.name, poses, beats, duration);
+  incenseClips.set(source, clip);
+  return clip;
+}
+function samplePoses(source: THREE.AnimationClip, name: string, poses: number[], beats: number[], duration: number) {
   const tracks = source.tracks.map(track => {
     const sample = track.createInterpolant();
     const keys = poses.map(progress => Array.from(sample.evaluate(progress * source.duration) as Float32Array));
@@ -47,8 +52,16 @@ function steadyIncenseClip(source: THREE.AnimationClip) {
     shortened.values = new Float32Array(values);
     return shortened;
   });
-  const clip = new THREE.AnimationClip(source.name, duration, tracks);
-  incenseClips.set(source, clip);
+  return new THREE.AnimationClip(name, duration, tracks);
+}
+
+const prayerClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+function standingPrayer(source: THREE.AnimationClip) {
+  const cached = prayerClips.get(source);
+  if (cached) return cached;
+  const duration = PRAY_MS / 1000;
+  const clip = samplePoses(source, 'StandingPrayer', [1, 114 / 130, 114 / 130, 1], [0, 0.55, 2.05, duration], duration);
+  prayerClips.set(source, clip);
   return clip;
 }
 const prostrationClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
@@ -304,16 +317,6 @@ function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt 
     } as Record<string, [number, number, number]>;
   }
 
-  if (action === 'praying') {
-    // 合手时带一个缓慢的鞠躬起伏：掌在胸前、上身一起一落
-    const bow = (Math.sin(t * 1.1 - Math.PI / 2) + 1) * 0.5;
-    return {
-      armL: [R(46), 0, R(-52)], armR: [R(46), 0, R(52)],
-      foreL: [R(6), 0, R(-34)], foreR: [R(6), 0, R(34)],
-      spine: [R(4) + R(26) * bow, 0, 0], chest: [R(6) * bow, 0, 0], head: [R(8) + R(8) * bow, 0, 0],
-    } as Record<string, [number, number, number]>;
-  }
-
   if (motion === 'walk') {
     // 正常人走路：大腿前后摆约 ±26°，摆动腿屈膝 45°，支撑腿几乎伸直；
     // 脚踝随大腿回正保持脚掌贴地，手臂自然前后摆，骨盆与胸腔反向轻微扭转
@@ -428,7 +431,9 @@ export default function SkinAvatar({
     const incenseBone = bones.get('incense');
     const adjusted = [spine, head, incenseBone, ...arms.flat()].flatMap(bone => bone
       ? [{ bone, position: bone.position.clone(), quaternion: bone.quaternion.clone() }] : []);
-    return { scene, joints, legs, arms, spine, head, incenseBone, adjusted, mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
+    const incenseSource = THREE.AnimationClip.findByName(model.animations, 'OfferIncense');
+    const prayer = incenseSource ? mixer.clipAction(standingPrayer(incenseSource)) : undefined;
+    return { scene, joints, legs, arms, spine, head, incenseBone, adjusted, mixer, prayer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
   }, [model, original]);
 
   useFrame(({ clock }, dt) => {
@@ -443,11 +448,12 @@ export default function SkinAvatar({
     const phase = live ? playerMotion.phase : playback?.current.phase ?? stridePhase ?? t * 6.4;
     const isBow = currentAction === 'kowtow' || currentAction === 'bowing';
     const isIncense = currentAction === 'incense';
-    const ritual = isBow ? avatar.bow : isIncense ? avatar.offer : undefined;
+    const isPrayer = currentAction === 'praying';
+    const ritual = isBow ? avatar.bow : isIncense ? avatar.offer : isPrayer ? avatar.prayer : undefined;
 
     // The mixer skips constant channels. Restore its unmodified pose before
     // evaluating the next frame so procedural corrections never accumulate.
-    if (previous.current === 'incense' || previous.current === 'kowtow' || previous.current === 'bowing') {
+    if (previous.current === 'incense' || previous.current === 'kowtow' || previous.current === 'bowing' || previous.current === 'praying') {
       for (const { bone, position, quaternion } of avatar.adjusted) {
         bone.position.copy(position);
         bone.quaternion.copy(quaternion);
@@ -456,10 +462,10 @@ export default function SkinAvatar({
     if (currentAction !== previous.current) {
       avatar.mixer.stopAllAction();
       if (ritual) {
-        const repeat = (!live && !playback) || currentAction === 'bowing';
+        const repeat = (!live && !playback && !isPrayer) || currentAction === 'bowing';
         ritual.reset().setLoop(repeat ? THREE.LoopRepeat : THREE.LoopOnce, repeat ? Infinity : 1);
         ritual.clampWhenFinished = !repeat;
-        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION_MS / 1000 : KOWTOW_DURATION_MS / 1000).play();
+        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION_MS / 1000 : isPrayer ? PRAY_MS / 1000 : KOWTOW_DURATION_MS / 1000).play();
         if (repeat && timeShift) {
           const duration = ritual.getClip().duration;
           ritual.time = ((timeShift % duration) + duration) % duration;
@@ -475,6 +481,12 @@ export default function SkinAvatar({
       for (const { bone, position, quaternion } of avatar.adjusted) {
         position.copy(bone.position);
         quaternion.copy(bone.quaternion);
+      }
+      if (isPrayer) {
+        const bow = THREE.MathUtils.smoothstep(ritual.time, 0.55, 1.15)
+          * (1 - THREE.MathUtils.smoothstep(ritual.time, 1.3, 2.0));
+        avatar.spine?.rotateX(R(22) * bow);
+        avatar.head?.rotateX(R(8) * bow);
       }
       const stick = avatar.incenseBone;
       if (isIncense && stick?.parent && avatar.incense) {

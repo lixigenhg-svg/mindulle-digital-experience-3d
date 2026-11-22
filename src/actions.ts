@@ -3,7 +3,7 @@
  *
  * 状态：idle | bowing | praying | beads | wood_hit（同一时间只有一个主动作）
  * 锁档：bowing 锁全部位移；beads 锁前后移动、允许原地转身；移动可打断动作。
- * 一次性动作：pray 1.5s、wood_hit 0.7s，到时自动回 idle。
+ * 一次性动作：pray 2.5s、wood_hit 0.7s，到时自动回 idle。
  *
  * 事件同时驱动「网络上报」与「本地音效」，由构造回调 emit 出去。
  */
@@ -27,7 +27,7 @@ export type ActionEvent =
 
 export type MoveLock = 'all' | 'translate' | 'none';
 
-const PRAY_MS = 1500;
+export const PRAY_MS = 2500;
 const WOODFISH_MS = 700;
 const OFFER_MS = 2800;
 
@@ -119,7 +119,7 @@ export class ActionMachine {
   moveLock(): MoveLock {
     if (this.state === 'bowing') return 'all';
     if (this.state === 'beads') return 'translate';
-    if (this.state === 'kowtow' || this.state === 'incense') return 'all';
+    if (this.state === 'kowtow' || this.state === 'incense' || this.state === 'praying') return 'all';
     if (this.state === 'sitting') return 'none';
     return 'none';
   }
