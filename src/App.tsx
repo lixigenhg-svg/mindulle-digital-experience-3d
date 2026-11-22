@@ -651,7 +651,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           {!isPrivate && insideHall && <ActionBar
             machine={machine}
             onOpenMala={openMala}
-            onOpenWoodfish={() => { strikeWoodfish(); setWoodfishOpen(true); }}
+            onOpenWoodfish={() => setWoodfishOpen(true)}
             onTour={onTour}
             onBell={onBell}
             onWish={onWish}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Props {
   onStrike: () => void;
@@ -8,14 +8,22 @@ interface Props {
 export default function Woodfish({ onStrike, onClose }: Props) {
   const [automatic, setAutomatic] = useState(false);
   const [strike, setStrike] = useState(0);
+  const soundTimer = useRef<number>();
+  const hit = useCallback(() => {
+    window.clearTimeout(soundTimer.current);
+    setStrike(value => value + 1);
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      onStrike();
+    } else {
+      soundTimer.current = window.setTimeout(onStrike, 143);
+    }
+  }, [onStrike]);
+  useEffect(() => () => window.clearTimeout(soundTimer.current), []);
   useEffect(() => {
     if (!automatic) return;
-    const timer = window.setInterval(() => {
-      onStrike();
-      setStrike(value => value + 1);
-    }, 1150);
+    const timer = window.setInterval(hit, 1150);
     return () => window.clearInterval(timer);
-  }, [automatic, onStrike]);
+  }, [automatic, hit]);
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -34,12 +42,12 @@ export default function Woodfish({ onStrike, onClose }: Props) {
           </div>
           <button type="button" className="mala-close" aria-label="닫기" onClick={onClose}>×</button>
         </header>
-        <button type="button" className="woodfish-strike" aria-label="목어 치기" onClick={() => {
-          onStrike();
-          setStrike(value => value + 1);
-        }}>
-          <img key={strike} className={strike ? 'woodfish-struck' : undefined}
-            src="assets/ritual/woodfish.webp" alt="나무 목어와 채" draggable={false} />
+        <button type="button" className="woodfish-strike" aria-label="목어 치기" onClick={hit}>
+          <span className="woodfish-art">
+            <img src="assets/ritual/woodfish.webp" alt="나무 목어" draggable={false} />
+            <img key={strike} className={strike ? 'woodfish-mallet woodfish-struck' : 'woodfish-mallet'}
+              src="assets/ritual/woodfish-mallet.webp" alt="" draggable={false} />
+          </span>
         </button>
         <footer className="woodfish-controls">
           <button type="button" className="mala-step" aria-pressed={automatic}
