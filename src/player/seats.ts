@@ -39,3 +39,11 @@ export function nearestSeat(x: number, z: number, searchR = SEAT_RADIUS): Seat |
   }
   return best;
 }
+
+export function isInTeaHouse(x: number, z: number) {
+  const dx = x - 11.4;
+  const dz = z - 36.6;
+  const c = Math.cos(0.35);
+  const s = Math.sin(0.35);
+  return Math.abs(dx * c + dz * s) <= 2.85 && Math.abs(-dx * s + dz * c) <= 2.35;
+}

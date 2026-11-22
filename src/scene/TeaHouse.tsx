@@ -200,9 +200,11 @@ function PaperLamp({ x, z, y = 2.02 }: { x: number; z: number; y?: number }) {
 export default function TeaHouse({
   position = [-11.5, 0, 44],
   rotationY = 0,
+  openView = false,
 }: {
   position?: [number, number, number];
   rotationY?: number;
+  openView?: boolean;
 }) {
   return (
     <group position={position} rotation-y={rotationY}>
@@ -233,8 +235,8 @@ export default function TeaHouse({
       </mesh>
 
       {/* 后墙（半人高的木板墙，透出后面的树） */}
-      <mesh position={[0, 1.2, -1.85]} castShadow receiveShadow material={PLASTER}>
-        <boxGeometry args={[4.7, 2.4, 0.1]} />
+      <mesh position={[0, openView ? 0.42 : 1.2, -1.85]} castShadow receiveShadow material={PLASTER}>
+        <boxGeometry args={[4.7, openView ? 0.84 : 2.4, 0.1]} />
       </mesh>
 
       {/* 两侧矮墙 */}
@@ -262,7 +264,7 @@ export default function TeaHouse({
       <TeaPlaque />
 
       {/* 后墙：挂轴 + 两道木压条，避免整面白墙显得空 */}
-      <HangingScroll z={-1.78} />
+      {!openView && <HangingScroll z={-1.78} />}
       {[0.72, 2.02].map(y => (
         <mesh key={y} position={[0, y, -1.79]} material={WOOD_BEAM}>
           <boxGeometry args={[4.68, 0.075, 0.05]} />

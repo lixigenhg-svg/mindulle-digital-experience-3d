@@ -11,7 +11,7 @@ import Environment from './scene/Environment';
 import SensoryLayer from './scene/SensoryLayer';
 import * as THREE from 'three';
 import LocalPlayer, { type MoveSnapshot } from './player/LocalPlayer';
-import { nearestSeat } from './player/seats';
+import { isInTeaHouse, nearestSeat } from './player/seats';
 import { cushionTaken, nearestFreeCushion, overlappingClaim, type Cushion } from './player/cushions';
 import RemotePlayers from './remote/RemotePlayers';
 import Hud from './ui/Hud';
@@ -174,7 +174,18 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   const [seatNear, setSeatNear] = useState<'tea' | 'bench' | null>(null);
   const [malaOpen, setMalaOpen] = useState(false);
   const [woodfishOpen, setWoodfishOpen] = useState(false);
-  const [rainTeaOpen, setRainTeaOpen] = useState(false);
+  const [rainTeaInvite, setRainTeaInvite] = useState(() =>
+    /^#rain-tea=([A-Za-z0-9_-]{22,128})$/.exec(location.hash)?.[1]);
+  const [rainTeaOpen, setRainTeaOpen] = useState(() => !isPrivate && Boolean(rainTeaInvite));
+  const [inTeaHouse, setInTeaHouse] = useState(false);
+
+  function closeRainTea() {
+    setRainTeaOpen(false);
+    if (rainTeaInvite) {
+      history.replaceState(history.state, '', location.pathname + location.search);
+      setRainTeaInvite(undefined);
+    }
+  }
   const strikeWoodfish = useCallback(() => machine.wood_hit(), [machine]);
   const [ready, setReady] = useState(false);
   // 场景是否真正可玩（模型与贴图就绪后调试钩子才出现），用于收起加载提示
@@ -651,6 +662,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
             const seat = isPrivate ? null : nearestSeat(s.x, s.z, 1.8);
             const k = seat ? seat.kind : null;
             setSeatNear(prev => (prev === k ? prev : k));
+            setInTeaHouse(!isPrivate && isInTeaHouse(s.x, s.z));
           }}
         />
         <RemotePlayers />
@@ -678,13 +690,12 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
               {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '앉기'}
             </button>
           )}
-          {!isPrivate && seatNear === 'tea' && !rainTeaOpen && (
+          {!isPrivate && inTeaHouse && !rainTeaOpen && (
             <button type="button" onClick={() => setRainTeaOpen(true)}
               className="absolute bottom-12 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-900/85 px-5 py-2.5 text-sm text-amber-100 shadow-lg">
               빗소리 찻자리 미리보기
             </button>
           )}
-          {rainTeaOpen && <RainTea onClose={() => setRainTeaOpen(false)} />}
           {!isPrivate && insideHall && <ActionBar
             machine={machine}
             onOpenMala={openMala}
@@ -723,6 +734,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
         </>
       )}
 
+      {rainTeaOpen && <RainTea invite={rainTeaInvite} onClose={closeRainTea} />}
       <DonationModal />
       <ServerModal />
       <SettingsModal engine={audioRef.current} />

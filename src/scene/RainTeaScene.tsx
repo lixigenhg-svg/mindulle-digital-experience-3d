@@ -9,7 +9,7 @@ function Rain() {
   const drops = useMemo(() => Array.from({ length: 420 }, (_, i) => ({
     x: Math.sin(i * 131.73) * 10,
     y: (i * 0.731) % 8,
-    z: 2.65 + (i * 0.317) % 14,
+    z: (i % 3 === 0 ? 1 : -1) * (2.65 + (i * 0.317) % 14),
     speed: 4 + (i % 7) * 0.42,
   })), []);
   const positions = useMemo(() => new Float32Array(drops.length * 6), [drops]);
@@ -34,12 +34,12 @@ function Rain() {
   );
 }
 
-export default function RainTeaScene({ purchased }: { purchased: boolean }) {
+export default function RainTeaScene({ purchased, guestPresent }: { purchased: boolean; guestPresent: boolean }) {
   return (
     <Canvas
       dpr={[1, 1.4]}
-      camera={{ position: purchased ? [2.55, 1.65, -0.85] : [6, 2.75, 8], fov: 52 }}
-      onCreated={({ camera }) => camera.lookAt(purchased ? -0.5 : 0, purchased ? 1 : 1.4, purchased ? 2.7 : 0)}
+      camera={{ position: purchased ? [0, 1.75, 1.65] : [6, 2.75, 8], fov: 52 }}
+      onCreated={({ camera }) => camera.lookAt(0, purchased ? 0.68 : 1.4, purchased ? -0.6 : 0)}
     >
       <color attach="background" args={['#152338']} />
       <fog attach="fog" args={['#152338', 10, 31]} />
@@ -51,7 +51,7 @@ export default function RainTeaScene({ purchased }: { purchased: boolean }) {
         <meshStandardMaterial color="#293635" roughness={0.68} />
       </mesh>
       {[[-4, 5], [3.5, 7], [-6, 10], [1, 12], [6, 13]].map(([x, z], i) => (
-        <group key={x} position={[x, 0, z]} scale={1 + (i % 3) * 0.24}>
+        <group key={x} position={[x, 0, -z]} scale={1 + (i % 3) * 0.24}>
           <mesh position-y={0.95}>
             <cylinderGeometry args={[0.07, 0.14, 1.9, 6]} />
             <meshStandardMaterial color="#38292a" />
@@ -64,12 +64,14 @@ export default function RainTeaScene({ purchased }: { purchased: boolean }) {
           ))}
         </group>
       ))}
-      <TeaHouse position={[0, 0, 0]} />
+      <TeaHouse position={[0, 0, 0]} openView />
       <Rain />
       {purchased && (
         <Suspense fallback={null}>
           <SkinAvatar position={[-1.15, 0.095, 0.22]} rotationY={-Math.PI / 2}
             height={1.55} live={false} action="sitting" seatKind="tea" />
+          {guestPresent && <SkinAvatar position={[1.15, 0.095, 0.22]} rotationY={Math.PI / 2}
+            height={1.55} live={false} action="sitting" seatKind="tea" timeShift={1.5} />}
         </Suspense>
       )}
     </Canvas>
