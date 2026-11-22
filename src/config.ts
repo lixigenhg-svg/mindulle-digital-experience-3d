@@ -106,3 +106,6 @@ export const HALL_SCALE = 0.62;
 export const INCENSE_BURNER_LOCAL_Z = -5.87;
 export const INCENSE_BURNER_Z = INCENSE_BURNER_LOCAL_Z * HALL_SCALE + 8 * (1 - HALL_SCALE);
 export const INCENSE_INSERT_Y = 0.67;
+
+export const INCENSE_DURATION_MS = 8400;
+export const INCENSE_RELEASE = 0.64;

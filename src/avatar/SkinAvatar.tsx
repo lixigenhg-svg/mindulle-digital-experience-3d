@@ -1,4 +1,4 @@
-import { INCENSE_BURNER_Z, INCENSE_INSERT_Y } from '../config';
+import { INCENSE_BURNER_Z, INCENSE_INSERT_Y, INCENSE_DURATION_MS, INCENSE_RELEASE } from '../config';
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
@@ -9,7 +9,38 @@ import { playerMotion } from './animState';
 export const RIG_AVATAR_URL = 'assets/models/avatar.glb';
 const MONK_URL = 'assets/models/little-monk-yellow.glb';
 const MONK_HEIGHT = 1.686;
-const INCENSE_DURATION = 6.4;
+const incenseClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
+
+function steadyIncenseClip(source: THREE.AnimationClip) {
+  const cached = incenseClips.get(source);
+  if (cached) return cached;
+  // Skip the baked dip-and-lift and the final re-raise of the hands.
+  const poses = [0, 28 / 130, 81 / 130, 81 / 130, 1];
+  const beats = [0, 0.23, 0.61, INCENSE_RELEASE, 0.94];
+  const tracks = source.tracks.map(track => {
+    const sample = track.createInterpolant();
+    const keys = poses.map(progress => Array.from(sample.evaluate(progress * source.duration) as Float32Array));
+    const shortened = track.clone();
+    shortened.times = Float32Array.of(0, 1, 2, 3, 4);
+    shortened.values = new Float32Array(keys.flat());
+    const transition = shortened.createInterpolant();
+    const times = [];
+    const values = [];
+    for (let frame = 0; frame <= 120; frame++) {
+      const progress = frame / 120;
+      const index = Math.min(3, beats.filter(beat => beat <= progress).length - 1);
+      const eased = THREE.MathUtils.smoothstep(progress, beats[index], beats[index + 1]);
+      times.push(progress * source.duration);
+      values.push(...transition.evaluate(index + eased));
+    }
+    shortened.times = new Float32Array(times);
+    shortened.values = new Float32Array(values);
+    return shortened;
+  });
+  const clip = new THREE.AnimationClip(source.name, source.duration, tracks);
+  incenseClips.set(source, clip);
+  return clip;
+}
 const STRIDE = 0.30;
 const LEG_LENGTH = 0.29;
 const WALK_DROP = 0.04;
@@ -297,6 +328,7 @@ export default function SkinAvatar({
   const previous = useRef<Props['action']>();
   const delta = useMemo(() => new THREE.Quaternion(), []);
   const euler = useMemo(() => new THREE.Euler(), []);
+  const nodAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
   const insertion = useMemo(() => new THREE.Vector3(), []);
   const reachTools = useMemo(() => ({
     displacement: new THREE.Vector3(), target: new THREE.Vector3(),
@@ -340,7 +372,7 @@ export default function SkinAvatar({
     const mixer = new THREE.AnimationMixer(scene);
     const clip = (name: string) => {
       const animation = THREE.AnimationClip.findByName(model.animations, name);
-      return animation ? mixer.clipAction(animation) : undefined;
+      return animation ? mixer.clipAction(name === 'OfferIncense' ? steadyIncenseClip(animation) : animation) : undefined;
     };
     const legs = ['L', 'R'].map(side => (['Thigh', 'Shin', 'Foot'].map(
       name => bones.get(norm(`${name}.${side}`))!,
@@ -348,7 +380,7 @@ export default function SkinAvatar({
     const arms = ['L', 'R'].map(side => (['UpperArm', 'Forearm', 'Hand'].map(
       name => bones.get(norm(`${name}.${side}`))!,
     ) as [THREE.Bone, THREE.Bone, THREE.Bone]));
-    return { scene, joints, legs, arms, spine: bones.get('spine'), incenseBone: bones.get('incense'), mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
+    return { scene, joints, legs, arms, spine: bones.get('spine'), head: bones.get('head'), incenseBone: bones.get('incense'), mixer, bow: clip('Prostrate'), offer: clip('OfferIncense'), incense };
   }, [model, original]);
 
   useFrame(({ clock }, dt) => {
@@ -367,7 +399,7 @@ export default function SkinAvatar({
         const repeat = !live || currentAction === 'bowing';
         ritual.reset().setLoop(repeat ? THREE.LoopRepeat : THREE.LoopOnce, repeat ? Infinity : 1);
         ritual.clampWhenFinished = !repeat;
-        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION : 3).play();
+        ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION_MS / 1000 : 3).play();
         if (repeat && timeShift) {
           const duration = ritual.getClip().duration;
           ritual.time = ((timeShift % duration) + duration) % duration;
@@ -383,8 +415,8 @@ export default function SkinAvatar({
       const stick = avatar.incenseBone;
       if (isIncense && stick?.parent && avatar.incense) {
         const progress = ritual.time / ritual.getClip().duration;
-        const reach = THREE.MathUtils.smoothstep(progress, 0.49, 0.66);
-        const withdraw = 1 - THREE.MathUtils.smoothstep(progress, 0.66, 0.78);
+        const reach = THREE.MathUtils.smoothstep(progress, 0.32, 0.61);
+        const withdraw = 1 - THREE.MathUtils.smoothstep(progress, INCENSE_RELEASE, 0.94);
         const { displacement, target, current, desired, rotation } = reachTools;
         insertion.set(0, INCENSE_INSERT_Y, INCENSE_BURNER_Z);
         stick.getWorldPosition(displacement);
@@ -406,7 +438,13 @@ export default function SkinAvatar({
         }
         stick.parent.worldToLocal(insertion);
         stick.position.lerp(insertion, reach);
-        avatar.incense.visible = progress < 0.67;
+        avatar.incense.visible = progress < INCENSE_RELEASE;
+        if (avatar.head && avatar.spine) {
+          const nod = 0.22 * THREE.MathUtils.smoothstep(progress, 0.15, 0.61) * withdraw;
+          // Set the head angle relative to the body root, independent of torso recovery.
+          rotation.setFromAxisAngle(nodAxis, nod);
+          avatar.head.quaternion.copy(avatar.spine.quaternion).invert().multiply(rotation);
+        }
       }
     } else {
       const pose = poseOf(currentMotion, currentAction, t, phase, seatKind);

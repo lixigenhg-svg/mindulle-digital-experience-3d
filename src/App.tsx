@@ -31,7 +31,7 @@ import { playerMotion } from './avatar/animState';
 import { AudioEngine, sharedAudio } from './audio';
 import { Net } from './net';
 import { makeIdentity } from './names';
-import { bumpInstance, parseRoom, MOVE_SEND_INTERVAL, INCENSE_BURNER_Z, MOVE_SPEED } from './config';
+import { bumpInstance, parseRoom, MOVE_SEND_INTERVAL, INCENSE_BURNER_Z, MOVE_SPEED, INCENSE_DURATION_MS, INCENSE_RELEASE } from './config';
 import { store } from './store';
 import { haptic } from './immersive';
 import { expireNightPass, expirePremium, refreshPremium } from './paid';
@@ -461,23 +461,19 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
         fix?.([5.70, 2.25, P.z - 2.55], [0, 0.95, P.z - 0.35], false);
         window.setTimeout(() => {
           face?.(0);                           // 到位后再锁一次朝向（行走会把人转向通道）
-          machineRef.current?.incense(6400);   // 挺直站立→前倾→双手插香→直身，慢慢做完
+          machineRef.current?.incense(INCENSE_DURATION_MS);   // 挺直站立→前倾→双手插香→直身，慢慢做完
           audioRef.current?.trigger('pray');
         }, 500);
         window.setTimeout(() => {
           store.lightIncense();                // 插香：香头点亮、青烟升起
           store.toast('향을 올렸습니다');
           haptic('double');
-        }, 4750);
-        window.setTimeout(() => {
-          machineRef.current?.pray();
-        }, 7000);
+        }, 500 + INCENSE_DURATION_MS * INCENSE_RELEASE);
         window.setTimeout(() => {
           fix?.();                              // 解除定点机位
           scale?.(1.0);                         // 上香结束恢复常态大小
           cam?.(4.6, 0.30, 0);                 // 回到身后视角
-          seatFlow(() => machineRef.current?.toggleBow());   // 找空垫、面朝塑像、跪下俯身
-        }, 9000);
+        }, 500 + INCENSE_DURATION_MS + 850);
         return;
       }
       if (performance.now() - t0 > budget) {
