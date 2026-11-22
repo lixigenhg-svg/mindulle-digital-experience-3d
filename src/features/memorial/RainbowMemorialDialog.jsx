@@ -84,6 +84,28 @@ function ErrorText({ error }) {
   return <p className="mdl-memorial-error">{text}</p>;
 }
 
+function RoomThumbnail({ url }) {
+  const [image, setImage] = useState(null);
+  useEffect(() => {
+    if (!url) return;
+    const controller = new AbortController();
+    let objectUrl;
+    loadMemorialPhoto(url, { signal: controller.signal }).then(blob => {
+      if (controller.signal.aborted) return;
+      objectUrl = URL.createObjectURL(blob);
+      setImage({ url, objectUrl });
+    }).catch(() => {});
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  return image && image.url === url
+    ? <img src={image.objectUrl} alt="" onError={() => setImage(null)} />
+    : <span>+</span>;
+}
+
 function useRoomPhotos(room) {
   const [loaded, setLoaded] = useState(null);
   const photoKey = JSON.stringify(room?.ownerAccess ? room.photos : []);
@@ -506,7 +528,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
                     onClick={() => openRoom(room)}
                   >
                     <span className="mdl-memorial-room-thumb">
-                      {room.coverPhotoUrl ? <img src={room.coverPhotoUrl} alt="" /> : <span>+</span>}
+                      <RoomThumbnail key={room.coverPhotoUrl} url={room.ownerAccess ? room.coverPhotoUrl : undefined} />
                     </span>
                     <span className="mdl-memorial-room-meta">
                       <strong>{memorialName(room.petName)}</strong>
