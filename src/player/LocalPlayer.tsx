@@ -195,6 +195,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
   const [seatKindState, setSeatKindState] = useState<'floor' | 'tea' | 'bench'>('floor');
   const seatKindRef = useRef<'floor' | 'tea' | 'bench'>('floor');
   const activeBench = useRef<Seat | null>(null);
+  const activeTeaSeat = useRef<Seat | null>(null);
   const floorRef = useRef<THREE.Mesh>(null);
 
   // 动作状态机是普通类，改 state 不会触发重渲染；订阅后动作切换才能推给模型
@@ -433,7 +434,17 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
       s.yaw += gyro.yaw;
       s.pitch = THREE.MathUtils.clamp(s.pitch + gyro.pitch, CAM.pitchMin, CAM.pitchMax);
     }
-    const lock = machine.moveLock();
+    const sitting = machine.state === 'sitting';
+    if (!sitting) activeTeaSeat.current = null;
+    const nearbySeat = sitting && !activeTeaSeat.current && !activeBench.current
+      ? nearestSeat(s.pos.x, s.pos.z) : null;
+    const takingTeaSeat = nearbySeat?.kind === 'tea';
+    if (takingTeaSeat) {
+      activeTeaSeat.current = nearbySeat;
+      s.target = null;
+      turn.current = null;
+    }
+    const lock = takingTeaSeat ? 'all' : machine.moveLock();
 
     move.set(0, 0, 0);
     const touring = store.hud.tourActive;
@@ -566,7 +577,8 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     playerMotion.motion = s.anim;
     playerMotion.phase = s.walkPhase;
     if (!(window as unknown as { __MD_LOCK__?: boolean }).__MD_LOCK__) {
-      playerMotion.action = greeting ? 'greet' : action;
+      playerMotion.action = machine.state === 'sitting' && activeTeaSeat.current
+        ? 'sitting' : greeting ? 'greet' : action;
     }
     // 每秒记一次站位，刷新后能回到原处
     if (nowMs - lastSave.current > 1000) {
@@ -599,7 +611,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     let targetY = kneel ? CUSHION_Y : 0;
     if (machine.state === 'sitting') {
       // 坐下时找最近的可坐位置（茶室坐垫 / 庭院长凳），缓慢吸附过去并转向
-      const best = activeBench.current ?? nearestSeat(s.pos.x, s.pos.z);
+      const best = activeTeaSeat.current ?? activeBench.current ?? nearestSeat(s.pos.x, s.pos.z);
       const wantKind = best ? best.kind : 'floor';
       if (wantKind !== seatKindRef.current) { seatKindRef.current = wantKind; setSeatKindState(wantKind); }
       if (best) {
