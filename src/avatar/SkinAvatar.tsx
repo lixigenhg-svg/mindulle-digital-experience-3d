@@ -10,6 +10,9 @@ import { playerMotion } from './animState';
 export const RIG_AVATAR_URL = 'assets/models/avatar.glb';
 const MONK_URL = 'assets/models/little-monk-yellow.glb';
 const MONK_HEIGHT = 1.686;
+const TEA_ROOM_ORIGIN = new THREE.Vector3(11.4, 0, 36.6);
+const TEA_ROOM_UP = new THREE.Vector3(0, 1, 0);
+const TEA_ROOM_YAW = -0.35;
 const incenseClips = new WeakMap<THREE.AnimationClip, THREE.AnimationClip>();
 
 function steadyIncenseClip(source: THREE.AnimationClip) {
@@ -130,6 +133,33 @@ interface Props {
   seatKind?: 'floor' | 'tea' | 'bench';
 }
 
+type ArmReach = {
+  current: THREE.Vector3; desired: THREE.Vector3; axis: THREE.Vector3; pole: THREE.Vector3;
+  rotation: THREE.Quaternion; wristRotation: THREE.Quaternion;
+};
+
+function reachArm(shoulder: THREE.Bone, elbow: THREE.Bone, hand: THREE.Bone, target: THREE.Vector3, tools: ArmReach) {
+  const { current, desired, axis, pole, rotation, wristRotation } = tools;
+  hand.getWorldQuaternion(wristRotation);
+  // Solve the elbow in the baked arm's bend plane, without repeated corrections.
+  shoulder.worldToLocal(axis.copy(target));
+  const upper = elbow.position.length();
+  const lower = hand.position.length();
+  const length = THREE.MathUtils.clamp(axis.length(), Math.abs(upper - lower) + 0.001, upper + lower - 0.001);
+  axis.normalize();
+  pole.copy(elbow.position).addScaledVector(axis, -elbow.position.dot(axis)).normalize();
+  const along = (upper * upper - lower * lower + length * length) / (2 * length);
+  desired.copy(axis).multiplyScalar(along)
+    .addScaledVector(pole, Math.sqrt(Math.max(0, upper * upper - along * along))).normalize();
+  current.copy(elbow.position).normalize();
+  shoulder.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
+
+  elbow.worldToLocal(desired.copy(target)).normalize();
+  current.copy(hand.position).normalize();
+  elbow.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
+  hand.quaternion.copy(elbow.getWorldQuaternion(rotation).invert()).multiply(wristRotation);
+}
+
 function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt = t * 6.4, seatKind: 'floor' | 'tea' | 'bench' = 'floor') {
   if (action === 'sitting' && seatKind === 'bench') {
     // 庭院休息：坐在矮长凳上靠背，大腿略下倾、脚掌踏地，双手搭在膝上慢慢呼吸
@@ -148,49 +178,14 @@ function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt 
   }
 
   if (action === 'sitting' && seatKind === 'tea') {
-    // 茶室坐垫上的茶事：倒茶 → 端杯 → 饮 → 放下 → 静坐，7 秒一轮，循环往复
-    const breath = Math.sin(t * 1.1) * R(1.5);
-    const period = 7.0;
-    const p = ((t % period) / period + 1) % 1;
-    // 关键帧：[进度, 右上臂X, 右前臂X, 右臂内收, 左上臂X, 左前臂X, 头X, 颈X]
-    // 头部一律用负角度（负=低头），坐姿保持端端正正，不仰头
-    const K: [number, number, number, number, number, number, number, number][] = [
-      [0.00, 58, 34, -10, 30, 46, -9, -4],   // 伸手到茶壶上，低头看壶
-      [0.10, 52, 26, -8, 30, 50, -12, -5],   // 倒茶，视线落在杯上
-      [0.24, 40, 74, -14, 30, 52, -7, -3],   // 提起茶壶、换杯
-      [0.34, 44, 96, -18, 28, 50, -4, -2],   // 端杯到胸前
-      [0.44, 48, 108, -22, 26, 44, -6, -3],  // 举杯近唇（低头就杯，不仰头）
-      [0.56, 44, 96, -18, 28, 50, -4, -2],   // 饮毕放下一点
-      [0.70, 34, 54, -14, 28, 44, -3, -2],   // 杯放回膝前
-      [0.82, 28, 40, -16, 28, 40, -2, -1],   // 静坐，双手叠在膝上
-      [0.96, 28, 40, -16, 28, 40, -2, -1],   // 静坐保持
-      [1.00, 58, 34, -10, 30, 46, -9, -4],   // 回到倒茶，闭合循环
-    ];
-    let i = 0;
-    while (i < K.length - 2 && p > K[i + 1][0]) i++;
-    const a = K[i], b2 = K[i + 1];
-    const span = b2[0] - a[0] || 1;
-    let u = (p - a[0]) / span;
-    u = Math.max(0, Math.min(1, u));
-    // 缓入缓出，避免关键帧之间出现生硬折角
-    u = u * u * (3 - 2 * u);
-    const lerp = (x: number, y: number) => x + (y - x) * u;
-    const armRX = lerp(a[1], b2[1]);
-    const foreRX = lerp(a[2], b2[2]);
-    const armRZ = lerp(a[3], b2[3]);
-    const armLX = lerp(a[4], b2[4]);
-    const foreLX = lerp(a[5], b2[5]);
-    const headX = lerp(a[6], b2[6]);
-    const neckX = lerp(a[7], b2[7]);
+    const breath = Math.sin(t * 1.1) * R(1.2);
     return {
-      // 盘腿坐在坐垫上：大腿前折近水平、小腿收回压向内侧
       thighL: [R(78), 0, R(8)], thighR: [R(78), 0, R(-8)],
       shinL: [R(-76), 0, R(-6)], shinR: [R(-76), 0, R(6)],
       footL: [R(-8), 0, R(-3)], footR: [R(-8), 0, R(3)],
-      hips: [R(4), 0, 0],
-      spine: [R(5) + breath, 0, 0], chest: [R(2), 0, 0], neck: [R(neckX), 0, 0], head: [R(headX) + breath, 0, 0],
-      armL: [R(armLX), 0, R(-16)], armR: [R(armRX), 0, R(armRZ)],
-      foreL: [R(foreLX), 0, R(-12)], foreR: [R(foreRX), 0, R(armRZ * 0.6)],
+      hips: [R(4), 0, 0], spine: [R(5) + breath, 0, 0], head: [R(-3), 0, 0],
+      armL: [R(25), 0, R(-15)], armR: [R(25), 0, R(15)],
+      foreL: [R(37), 0, R(-10)], foreR: [R(37), 0, R(10)],
     } as Record<string, [number, number, number]>;
   }
 
@@ -361,6 +356,12 @@ export default function SkinAvatar({
   const model = useGLTF(MONK_URL);
   const offset = useRef<THREE.Group>(null);
   const benchBlend = useRef(0);
+  const teaCup = useRef<THREE.Group>(null);
+  const teaTime = useRef(0);
+  const teaPoints = useMemo(() => ({
+    table: new THREE.Vector3(), mouth: new THREE.Vector3(), grip: new THREE.Vector3(),
+    cup: new THREE.Vector3(), target: new THREE.Vector3(),
+  }), []);
   const previous = useRef<Props['action']>();
   const delta = useMemo(() => new THREE.Quaternion(), []);
   const euler = useMemo(() => new THREE.Euler(), []);
@@ -431,6 +432,9 @@ export default function SkinAvatar({
     const currentMotion = live ? playerMotion.motion : motion;
     const currentAction = action === 'incense' ? action
       : live && playerMotion.action !== 'idle' ? playerMotion.action : action;
+    const seat = live ? playerMotion.seatKind : seatKind;
+    const drinking = currentAction === 'sitting' && seat === 'tea';
+    teaTime.current = drinking ? (teaTime.current + dt) % 15 : 0;
     const phase = live ? playerMotion.phase : stridePhase ?? t * 6.4;
     const isBow = currentAction === 'kowtow' || currentAction === 'bowing';
     const isIncense = currentAction === 'incense';
@@ -472,7 +476,7 @@ export default function SkinAvatar({
         const progress = Math.min(1, ritual.time / (INCENSE_INSERT_DURATION_MS / 1000));
         const reach = THREE.MathUtils.smoothstep(progress, 0.32, 0.61);
         const withdraw = 1 - THREE.MathUtils.smoothstep(progress, INCENSE_RELEASE, 0.94);
-        const { displacement, target, current, desired, axis, pole, rotation, wristRotation } = reachTools;
+        const { displacement, target, rotation } = reachTools;
         insertion.set(0, INCENSE_INSERT_Y, INCENSE_BURNER_Z);
         stick.getWorldPosition(displacement);
         displacement.subVectors(insertion, displacement).multiplyScalar(reach * withdraw);
@@ -482,24 +486,7 @@ export default function SkinAvatar({
           avatar.spine?.rotateX(0.26 * reach * withdraw);
           for (const [shoulder, elbow, hand] of avatar.arms) {
             hand.getWorldPosition(target).addScaledVector(displacement, 0.8);
-            hand.getWorldQuaternion(wristRotation);
-            // Solve the elbow in the baked arm's bend plane, without repeated corrections.
-            shoulder.worldToLocal(axis.copy(target));
-            const upper = elbow.position.length();
-            const lower = hand.position.length();
-            const length = THREE.MathUtils.clamp(axis.length(), Math.abs(upper - lower) + 0.001, upper + lower - 0.001);
-            axis.normalize();
-            pole.copy(elbow.position).addScaledVector(axis, -elbow.position.dot(axis)).normalize();
-            const along = (upper * upper - lower * lower + length * length) / (2 * length);
-            desired.copy(axis).multiplyScalar(along)
-              .addScaledVector(pole, Math.sqrt(Math.max(0, upper * upper - along * along))).normalize();
-            current.copy(elbow.position).normalize();
-            shoulder.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
-
-            elbow.worldToLocal(desired.copy(target)).normalize();
-            current.copy(hand.position).normalize();
-            elbow.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
-            hand.quaternion.copy(elbow.getWorldQuaternion(rotation).invert()).multiply(wristRotation);
+            reachArm(shoulder, elbow, hand, target, reachTools);
           }
         }
         stick.parent.worldToLocal(insertion);
@@ -516,7 +503,7 @@ export default function SkinAvatar({
         }
       }
     } else {
-      const pose = poseOf(currentMotion, currentAction, t, phase, seatKind);
+      const pose = poseOf(currentMotion, currentAction, t, phase, seat);
       const blend = Math.min(1, dt * 9);
       for (const joint of avatar.joints) {
         const target = pose[joint.key] ?? [0, 0, 0];
@@ -567,10 +554,50 @@ export default function SkinAvatar({
     }
     group.position.x += ((walking ? stride * 0.012 : 0) - group.position.x) * Math.min(1, dt * 8);
     group.scale.y += ((floorSeated ? 0.86 : 1) - group.scale.y) * Math.min(1, dt * 8);
+    const cup = teaCup.current;
+    if (cup?.parent) {
+      cup.visible = drinking;
+      if (drinking && avatar.head && avatar.spine) {
+        const elapsed = teaTime.current;
+        const ease = (from: number, to: number) => THREE.MathUtils.smoothstep(elapsed, from, to);
+        const lift = ease(3, 5.8) * (1 - ease(8.2, 11.2));
+        const grasp = ease(1.2, 3) * (1 - ease(11.2, 13));
+        const reach = grasp * (1 - lift);
+        avatar.spine.rotateX(R(14) * reach);
+        avatar.head.rotateX(R(5) * lift);
+        const { table, mouth, grip, cup: cupWorld, target } = teaPoints;
+        const root = cup.parent;
+        root.localToWorld(table.set(0, 0, -0.51));
+        table.sub(TEA_ROOM_ORIGIN).applyAxisAngle(TEA_ROOM_UP, -TEA_ROOM_YAW);
+        table.set(THREE.MathUtils.clamp(table.x, -0.70, 0.70), 0.507,
+          THREE.MathUtils.clamp(table.z, -0.24, 0.54));
+        table.applyAxisAngle(TEA_ROOM_UP, TEA_ROOM_YAW).add(TEA_ROOM_ORIGIN);
+        avatar.head.localToWorld(mouth.set(0, 0.15, 0.27));
+        mouth.y -= 0.035;
+        cupWorld.copy(table).lerp(mouth, lift);
+        root.worldToLocal(cup.position.copy(cupWorld));
+        cup.rotation.x = -R(14) * ease(5.8, 6.5) * (1 - ease(7.6, 8.2));
+        const [shoulder, elbow, hand] = avatar.arms[1];
+        root.localToWorld(grip.set(0.053, 0, 0)).sub(root.getWorldPosition(target));
+        hand.getWorldPosition(target).lerp(grip.add(cupWorld), grasp);
+        reachArm(shoulder, elbow, hand, target, reachTools);
+      }
+    }
+
   });
 
   return (
     <group position={position} rotation-y={rotationY}>
+      {(live || seatKind === 'tea') && <group ref={teaCup} visible={false}>
+        <mesh castShadow>
+          <cylinderGeometry args={[0.048, 0.036, 0.064, 16]} />
+          <meshStandardMaterial color={0xddd0ac} roughness={0.42} />
+        </mesh>
+        <mesh position={[0, 0.032, 0]}>
+          <cylinderGeometry args={[0.040, 0.040, 0.003, 16]} />
+          <meshStandardMaterial color={0x795027} roughness={0.28} />
+        </mesh>
+      </group>}
       <group ref={offset}>
         <primitive object={avatar.scene} rotation-y={Math.PI} scale={height / MONK_HEIGHT} />
       </group>

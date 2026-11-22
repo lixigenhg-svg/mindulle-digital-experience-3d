@@ -642,7 +642,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
               onClick={onSit}
               className="pointer-events-auto absolute bottom-[110px] left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/55 px-6 py-3 text-[15px] text-amber-100 shadow-lg backdrop-blur-md transition hover:bg-black/70"
             >
-              {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '여기서 쉬어가기'}
+              {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '앉기'}
             </button>
           )}
           {!isPrivate && insideHall && <ActionBar

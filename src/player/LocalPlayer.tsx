@@ -438,13 +438,13 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     if (!sitting) activeTeaSeat.current = null;
     const nearbySeat = sitting && !activeTeaSeat.current && !activeBench.current
       ? nearestSeat(s.pos.x, s.pos.z) : null;
-    const takingTeaSeat = nearbySeat?.kind === 'tea';
-    if (takingTeaSeat) {
-      activeTeaSeat.current = nearbySeat;
+    if (nearbySeat) {
+      if (nearbySeat.kind === 'tea') activeTeaSeat.current = nearbySeat;
+      else activeBench.current = nearbySeat;
       s.target = null;
       turn.current = null;
     }
-    const lock = takingTeaSeat ? 'all' : machine.moveLock();
+    const lock = nearbySeat ? 'all' : machine.moveLock();
 
     move.set(0, 0, 0);
     const touring = store.hud.tourActive;
@@ -577,7 +577,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
     playerMotion.motion = s.anim;
     playerMotion.phase = s.walkPhase;
     if (!(window as unknown as { __MD_LOCK__?: boolean }).__MD_LOCK__) {
-      playerMotion.action = machine.state === 'sitting' && activeTeaSeat.current
+      playerMotion.action = machine.state === 'sitting' && (activeTeaSeat.current || activeBench.current)
         ? 'sitting' : greeting ? 'greet' : action;
     }
     // 每秒记一次站位，刷新后能回到原处
