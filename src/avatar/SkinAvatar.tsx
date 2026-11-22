@@ -333,7 +333,8 @@ export default function SkinAvatar({
   const reachTools = useMemo(() => ({
     displacement: new THREE.Vector3(), target: new THREE.Vector3(),
     current: new THREE.Vector3(), desired: new THREE.Vector3(),
-    rotation: new THREE.Quaternion(),
+    axis: new THREE.Vector3(), pole: new THREE.Vector3(),
+    rotation: new THREE.Quaternion(), wristRotation: new THREE.Quaternion(),
   }), []);
 
   const avatar = useMemo(() => {
@@ -417,7 +418,7 @@ export default function SkinAvatar({
         const progress = ritual.time / ritual.getClip().duration;
         const reach = THREE.MathUtils.smoothstep(progress, 0.32, 0.61);
         const withdraw = 1 - THREE.MathUtils.smoothstep(progress, INCENSE_RELEASE, 0.94);
-        const { displacement, target, current, desired, rotation } = reachTools;
+        const { displacement, target, current, desired, axis, pole, rotation, wristRotation } = reachTools;
         insertion.set(0, INCENSE_INSERT_Y, INCENSE_BURNER_Z);
         stick.getWorldPosition(displacement);
         displacement.subVectors(insertion, displacement).multiplyScalar(reach * withdraw);
@@ -427,13 +428,24 @@ export default function SkinAvatar({
           avatar.spine?.rotateX(0.26 * reach * withdraw);
           for (const [shoulder, elbow, hand] of avatar.arms) {
             hand.getWorldPosition(target).addScaledVector(displacement, 0.8);
-            for (let pass = 0; pass < 3; pass++) {
-              for (const joint of [elbow, shoulder]) {
-                joint.worldToLocal(hand.getWorldPosition(current)).normalize();
-                joint.worldToLocal(desired.copy(target)).normalize();
-                joint.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
-              }
-            }
+            hand.getWorldQuaternion(wristRotation);
+            // Solve the elbow in the baked arm's bend plane, without repeated corrections.
+            shoulder.worldToLocal(axis.copy(target));
+            const upper = elbow.position.length();
+            const lower = hand.position.length();
+            const length = THREE.MathUtils.clamp(axis.length(), Math.abs(upper - lower) + 0.001, upper + lower - 0.001);
+            axis.normalize();
+            pole.copy(elbow.position).addScaledVector(axis, -elbow.position.dot(axis)).normalize();
+            const along = (upper * upper - lower * lower + length * length) / (2 * length);
+            desired.copy(axis).multiplyScalar(along)
+              .addScaledVector(pole, Math.sqrt(Math.max(0, upper * upper - along * along))).normalize();
+            current.copy(elbow.position).normalize();
+            shoulder.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
+
+            elbow.worldToLocal(desired.copy(target)).normalize();
+            current.copy(hand.position).normalize();
+            elbow.quaternion.multiply(rotation.setFromUnitVectors(current, desired));
+            hand.quaternion.copy(elbow.getWorldQuaternion(rotation).invert()).multiply(wristRotation);
           }
         }
         stick.parent.worldToLocal(insertion);
