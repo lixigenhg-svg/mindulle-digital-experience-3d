@@ -162,6 +162,20 @@ function reachArm(shoulder: THREE.Bone, elbow: THREE.Bone, hand: THREE.Bone, tar
   hand.quaternion.copy(elbow.getWorldQuaternion(rotation).invert()).multiply(wristRotation);
 }
 
+function preventBackLean(bone: THREE.Bone | undefined, tools: ArmReach, parentInverse: THREE.Matrix4) {
+  if (!bone?.parent) return;
+  const { current, desired, rotation } = tools;
+  bone.updateWorldMatrix(true, false);
+  desired.set(0, 0, 1).transformDirection(bone.matrixWorld);
+  if (desired.y <= 0.00001) return;
+  desired.y = 0;
+  if (desired.lengthSq() < 1e-8) desired.set(0, 0, 1);
+  parentInverse.copy(bone.parent.matrixWorld).invert();
+  desired.transformDirection(parentInverse);
+  current.set(0, 0, 1).applyQuaternion(bone.quaternion);
+  bone.quaternion.premultiply(rotation.setFromUnitVectors(current, desired));
+}
+
 function poseOf(motion: 'idle' | 'walk', action: Props['action'], t: number, wt = t * 6.4, seatKind: 'floor' | 'tea' | 'bench' = 'floor') {
   if (action === 'sitting' && seatKind === 'bench') {
     // 庭院休息：坐在矮长凳上靠背，大腿略下倾、脚掌踏地，双手搭在膝上慢慢呼吸
@@ -354,6 +368,7 @@ export default function SkinAvatar({
   const previous = useRef<Props['action']>();
   const delta = useMemo(() => new THREE.Quaternion(), []);
   const euler = useMemo(() => new THREE.Euler(), []);
+  const uprightMatrix = useMemo(() => new THREE.Matrix4(), []);
   const nodAxis = useMemo(() => new THREE.Vector3(1, 0, 0), []);
   const insertion = useMemo(() => new THREE.Vector3(), []);
   const reachTools = useMemo(() => ({
@@ -432,7 +447,7 @@ export default function SkinAvatar({
 
     // The mixer skips constant channels. Restore its unmodified pose before
     // evaluating the next frame so procedural corrections never accumulate.
-    if (previous.current === 'incense') {
+    if (previous.current === 'incense' || previous.current === 'kowtow' || previous.current === 'bowing') {
       for (const { bone, position, quaternion } of avatar.adjusted) {
         bone.position.copy(position);
         bone.quaternion.copy(quaternion);
@@ -457,12 +472,12 @@ export default function SkinAvatar({
     if (avatar.incense) avatar.incense.visible = isIncense;
     if (ritual) {
       avatar.mixer.update(dt);
+      for (const { bone, position, quaternion } of avatar.adjusted) {
+        position.copy(bone.position);
+        quaternion.copy(bone.quaternion);
+      }
       const stick = avatar.incenseBone;
       if (isIncense && stick?.parent && avatar.incense) {
-        for (const { bone, position, quaternion } of avatar.adjusted) {
-          position.copy(bone.position);
-          quaternion.copy(bone.quaternion);
-        }
         const progress = Math.min(1, ritual.time / (INCENSE_INSERT_DURATION_MS / 1000));
         const reach = THREE.MathUtils.smoothstep(progress, 0.32, 0.61);
         const withdraw = 1 - THREE.MathUtils.smoothstep(progress, INCENSE_RELEASE, 0.94);
@@ -569,6 +584,8 @@ export default function SkinAvatar({
         const reach = grasp * (1 - lift);
         avatar.spine.rotateX(R(14) * reach);
         avatar.head.rotateX(R(5) * lift);
+        preventBackLean(avatar.spine, reachTools, uprightMatrix);
+        preventBackLean(avatar.head, reachTools, uprightMatrix);
         const { table, mouth, grip, cup: cupWorld, target } = teaPoints;
         const root = cup.parent;
         root.localToWorld(table.set(0, 0, -0.51));
@@ -588,6 +605,8 @@ export default function SkinAvatar({
       }
     }
 
+    preventBackLean(avatar.spine, reachTools, uprightMatrix);
+    preventBackLean(avatar.head, reachTools, uprightMatrix);
   });
 
   return (
