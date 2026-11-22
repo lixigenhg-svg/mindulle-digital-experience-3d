@@ -93,12 +93,17 @@ export function bumpInstance(room: RoomInfo): void {
 }
 
 /** 坐垫阵列：25 行 × 20 列 = 500 块（场景与玩家共用同一份坐标） */
-export const CUSHION_ROWS = [-2.1, -0.65, 0.8, 2.25, 3.7, 5.15, 6.6, 8.05, 9.5, 10.95, 12.4, 13.85, 15.3, 16.75, 18.2, 19.65, 21.1, 22.55, 24.0, 25.45];
+// Space the larger cushions evenly within the original prayer area.
+export const CUSHION_ROWS = Array.from({ length: 15 }, (_, row) => -2.1 + row * (27.55 / 14));
 
 export const CUSHION_COLS = [-8.55, -6.65, -4.75, -2.85, -0.95, 0.95, 2.85, 4.75, 6.65, 8.55];
 
 /** 大殿壳体相对缩小系数（场景与人群坐标共用） */
 export const HALL_SCALE = 0.62;
+export const CUSHION_RADIUS = 0.56;
+// Stand behind the visual center so the cushion extends under the forehead.
+export const CUSHION_FORWARD_OFFSET = 0.24;
+
 
 
 

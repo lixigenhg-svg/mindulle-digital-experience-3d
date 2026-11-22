@@ -15,7 +15,7 @@ import SculptAvatar from '../avatar/SculptAvatar';
 import PhotoStatue from './PhotoStatue';
 import MeshStatue from './MeshStatue';
 import { PALETTES } from './StatueFigure';
-import { CUSHION_ROWS, CUSHION_COLS, HALL_SCALE, INCENSE_BURNER_LOCAL_Z } from '../config';
+import { CUSHION_ROWS, CUSHION_COLS, CUSHION_RADIUS, CUSHION_FORWARD_OFFSET, HALL_SCALE, INCENSE_BURNER_LOCAL_Z } from '../config';
 import NpcCrowd from './NpcCrowd';
 import TeaHouse from './TeaHouse';
 import WishWall from './WishWall';
@@ -811,16 +811,16 @@ function LongTable() {
 function Cushions() {
   const mat = useMemo(() => new THREE.MeshStandardMaterial({ color: 0x55473e, roughness: 0.97 }), []);
   const geometry = useMemo(() => new THREE.LatheGeometry([
-    [0, -0.045], [0.50, -0.045], [0.55, -0.04], [0.59, -0.024],
-    [0.60, 0.007], [0.58, 0.035], [0.53, 0.048], [0.44, 0.05], [0, 0.05],
-  ].map(([r, y]) => new THREE.Vector2(r, y)), 32), []);
+    [0, -0.045], [0.85, -0.045], [0.94, -0.04], [0.985, -0.024],
+    [1, 0.007], [0.99, 0.035], [0.95, 0.048], [0.92, 0.05], [0, 0.05],
+  ].map(([r, y]) => new THREE.Vector2(r * CUSHION_RADIUS / HALL_SCALE, y)), 32), []);
   return (
     <group>
       {CUSHION_ROWS.map(z =>
         CUSHION_COLS.map(x => (
           // 中间过道（|x| < 1.15）留空，坐垫只在过道两侧排
           Math.abs(x) < 1.15 ? null : (
-            <mesh key={`${x}-${z}`} position={[x, 0.045, z]} castShadow receiveShadow material={mat} geometry={geometry} />
+            <mesh key={`${x}-${z}`} position={[x, 0.045, z - CUSHION_FORWARD_OFFSET / HALL_SCALE]} castShadow receiveShadow material={mat} geometry={geometry} />
           )
         ))
       )}
