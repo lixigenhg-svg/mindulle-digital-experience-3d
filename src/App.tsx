@@ -20,6 +20,7 @@ import Intro from './ui/Intro';
 import { fetchLamps } from './api/lamps';
 import MalaWheel from './ui/MalaWheel';
 import Woodfish from './ui/Woodfish';
+import RainTea from './ui/RainTea';
 import DonationModal from './ui/DonationModal';
 import ServerModal from './ui/ServerModal';
 import SettingsModal from './ui/SettingsModal';
@@ -173,6 +174,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   const [seatNear, setSeatNear] = useState<'tea' | 'bench' | null>(null);
   const [malaOpen, setMalaOpen] = useState(false);
   const [woodfishOpen, setWoodfishOpen] = useState(false);
+  const [rainTeaOpen, setRainTeaOpen] = useState(false);
   const strikeWoodfish = useCallback(() => machine.wood_hit(), [machine]);
   const [ready, setReady] = useState(false);
   // 场景是否真正可玩（模型与贴图就绪后调试钩子才出现），用于收起加载提示
@@ -614,6 +616,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   return (
     <div className="relative h-full w-full">
       <Canvas
+        frameloop={rainTeaOpen ? 'never' : 'always'}
         shadows={!IS_HEADLESS}
         dpr={IS_HEADLESS ? 0.6 : [1, IS_MOBILE ? 1 : 1.5]}
         camera={{ fov: 58, near: 0.1, far: 100, position: [0, 2.2, 5.6] }}
@@ -675,6 +678,13 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
               {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '앉기'}
             </button>
           )}
+          {!isPrivate && seatNear === 'tea' && !rainTeaOpen && (
+            <button type="button" onClick={() => setRainTeaOpen(true)}
+              className="absolute bottom-12 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-900/85 px-5 py-2.5 text-sm text-amber-100 shadow-lg">
+              빗소리 찻자리 미리보기
+            </button>
+          )}
+          {rainTeaOpen && <RainTea onClose={() => setRainTeaOpen(false)} />}
           {!isPrivate && insideHall && <ActionBar
             machine={machine}
             onOpenMala={openMala}
