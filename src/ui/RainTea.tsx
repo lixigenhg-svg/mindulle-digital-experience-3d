@@ -27,6 +27,8 @@ function rainSound() {
 }
 
 export default function RainTea({ invite, onClose }: { invite?: string; onClose: () => void }) {
+  const [pairing, setPairing] = useState(false);
+  const [pairKey, setPairKey] = useState('');
   const [recoveryEnabled, setRecoveryEnabled] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
@@ -168,23 +170,85 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
   useEffect(() => {
     if (invite) return;
     const controller = new AbortController();
-    rainTeaRequest<{ enabled: boolean }>('/recovery', { signal: controller.signal })
-      .then(result => setRecoveryEnabled(result.enabled === true))
+    rainTeaRequest<{ enabled: boolean; pairing?: boolean }>('/recovery', { signal: controller.signal })
+      .then(result => { setRecoveryEnabled(result.enabled === true); setPairing(result.pairing === true); })
       .catch(() => {});
     return () => controller.abort();
   }, [invite]);
+
+  function pairRequest<T>(action: string, body: object, signal?: AbortSignal) {
+    return rainTeaRequest<T>(`/recovery/pair/${action}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+    });
+  }
+
+  useEffect(() => {
+    if (!recoveryOpen || !pairKey) return;
+    const controller = new AbortController();
+    let timer: number | undefined;
+    async function poll() {
+      try {
+        const result = await pairRequest<{ memberToken?: string }>('status', { key: pairKey }, controller.signal);
+        if (controller.signal.aborted) return;
+        if (!result.memberToken) {
+          timer = window.setTimeout(poll, 2000);
+          return;
+        }
+        rememberRainTeaToken(result.memberToken);
+        const restored = await rainTeaRequest<Access & { roomsEnabled?: boolean }>('/access', { signal: controller.signal });
+        if (!restored.entitled) throw new Error();
+        setAccess(restored);
+        setRoomsEnabled(restored.roomsEnabled === true);
+        setPairKey('');
+        setRecoveryCode('');
+        setRecoveryOpen(false);
+      } catch {
+        if (!controller.signal.aborted) {
+          setPairKey('');
+          setRecoveryCode('');
+          setRecoveryOpen(false);
+          setError('연결이 끝났습니다. 복구를 다시 시작해 주세요.');
+        }
+      }
+    }
+    void poll();
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [recoveryOpen, pairKey]);
+
+  async function startPairing() {
+    setRecovering(true);
+    setError('');
+    try {
+      const result = await pairRequest<{ key: string; code: string }>('start', {});
+      setPairKey(result.key);
+      setRecoveryCode(result.code);
+      setRecoveryOpen(true);
+    } catch {
+      setError('연결 코드를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setRecovering(false);
+    }
+  }
 
   async function recoverTicket() {
     if (recovering) return;
     const issue = access?.entitled === true;
     const code = recoveryCode.trim();
-    if (!issue && !/^[A-Za-z0-9_-]{22}$/.test(code)) {
+    if ((pairing && !/^\d{6}$/.test(code)) || (!pairing && !issue && !/^[A-Za-z0-9_-]{22}$/.test(code))) {
       setError('복구 코드를 확인해 주세요.');
       return;
     }
     setRecovering(true);
     setError('');
     try {
+      if (pairing) {
+        if (!issue || !window.confirm('이 코드가 본인의 휴대전화에 표시된 코드인지 확인해 주세요. 이용권을 이 기기에 연결할까요?')) return;
+        await pairRequest('approve', { code });
+        setRecoveryCode('');
+        setRecoveryOpen(false);
+        setNotice('휴대전화 연결을 승인했습니다.');
+        return;
+      }
       const result = await rainTeaRequest<{ code?: string; memberToken?: string }>(
         issue ? '/recovery/issue' : '/recovery/redeem',
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(issue ? {} : { code }) },
@@ -272,13 +336,14 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
         )}
         {recoveryEnabled && recoveryOpen && (
           <div className="mx-auto max-w-md space-y-2 rounded-xl bg-slate-900/95 p-3">
-            <p>{access?.entitled ? '복구 코드는 5분 동안 한 번만 사용할 수 있습니다.' : '결제한 기기에서 받은 복구 코드를 입력해 주세요.'}</p>
-            <input aria-label="이용권 복구 코드" value={recoveryCode} readOnly={access?.entitled === true}
+            <p>{pairing ? (access?.entitled ? '휴대전화에 표시된 6자리 코드를 입력해 주세요.' : '결제한 기기에서 이 코드를 입력해 주세요. 코드는 5분 동안 유효합니다.') : access?.entitled ? '복구 코드는 5분 동안 한 번만 사용할 수 있습니다.' : '결제한 기기에서 받은 복구 코드를 입력해 주세요.'}</p>
+            <input aria-label="이용권 복구 코드" value={recoveryCode} readOnly={pairing ? !access?.entitled : access?.entitled === true}
+              inputMode={pairing ? 'numeric' : 'text'} maxLength={pairing ? 6 : 22}
               autoComplete="off" autoCapitalize="none" spellCheck={false}
-              onFocus={event => { if (access?.entitled) event.currentTarget.select(); }}
-              onChange={event => setRecoveryCode(event.target.value)}
+              onFocus={event => { if (event.currentTarget.readOnly) event.currentTarget.select(); }}
+              onChange={event => setRecoveryCode(pairing ? event.target.value.replace(/[^0-9]/g, '') : event.target.value)}
               className="w-full rounded-lg bg-slate-800 px-3 py-2 text-center" />
-            {access?.entitled
+            {pairing ? (access?.entitled && <button type="button" disabled={recovering} onClick={() => void recoverTicket()}>연결 승인</button>) : access?.entitled
               ? <button type="button" onClick={() => void navigator.clipboard?.writeText(recoveryCode).catch(() => setError('코드를 선택해 복사해 주세요.'))}>코드 복사</button>
               : <button type="button" disabled={recovering} onClick={() => void recoverTicket()}>이용권 복구</button>}
           </div>
@@ -313,7 +378,11 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
           )}
           {recoveryEnabled && !invite && access && (
             <button type="button" disabled={recovering || loading} onClick={() => {
-              if (access.entitled && !recoveryOpen) void recoverTicket();
+              if (pairing) {
+                if (recoveryOpen) { setRecoveryOpen(false); setPairKey(''); setRecoveryCode(''); }
+                else if (access.entitled) setRecoveryOpen(true);
+                else void startPairing();
+              } else if (access.entitled && !recoveryOpen) void recoverTicket();
               else setRecoveryOpen(open => !open);
             }} className="rounded-full bg-white/15 px-4 py-2">
               {recoveryOpen ? '복구 닫기' : access.entitled ? '다른 기기에서 이용하기' : '구매한 이용권 복구'}
