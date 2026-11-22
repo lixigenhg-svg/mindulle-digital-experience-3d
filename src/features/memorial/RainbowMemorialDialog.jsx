@@ -124,6 +124,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
   useEffect(() => { if (creating) newNameInput.current?.focus(); }, [creating]);
   const [notice, setNotice] = useState('');
   const fileInputRef = useRef(null);
+  const newPhotoInput = useRef(null);
 
   const isLoggedIn = Boolean(getOwnerToken());
 
@@ -543,17 +544,19 @@ export function RainbowMemorialDialog({ open, onClose }) {
                       onChange={(event) => setNewMessage(event.target.value)}
                     />
                   </label>
-                  <label>
-                    <span>사진 선택 (1~5장)</span>
-                    <input type="file" accept="image/*" multiple disabled={busy} onChange={event => {
+                  <div className="mdl-memorial-actions">
+                    <button type="button" disabled={busy} onClick={() => newPhotoInput.current?.click()}>
+                      사진 선택 (1~5장)
+                    </button>
+                    <input ref={newPhotoInput} type="file" accept="image/*" multiple hidden disabled={busy} onChange={event => {
                       const files = Array.from(event.currentTarget.files || []);
                       const invalid = files.length > MAX_PHOTOS || files.some(file => !file.type.startsWith('image/'));
                       setNewPhotos(invalid ? [] : files);
                       setError(invalid ? new Error('이미지 파일을 최대 5장까지 선택해 주세요.') : null);
                       if (invalid) event.currentTarget.value = '';
                     }} />
-                    {newPhotos.length > 0 && <span>{newPhotos.length}장 선택됨</span>}
-                  </label>
+                    <span aria-live="polite">{newPhotos.length ? `${newPhotos.length}장 선택됨` : '선택한 사진 없음'}</span>
+                  </div>
                   <div className="mdl-memorial-actions">
                     <button type="button" className="mdl-memorial-primary" onClick={createRoom} disabled={busy}>
                       {busy ? '추모관을 만들고 있습니다…' : '무료 미리보기 만들기'}
