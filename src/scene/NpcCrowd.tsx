@@ -2,12 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import SkinAvatar from '../avatar/SkinAvatar';
-import { CUSHION_ROWS, CUSHION_COLS, HALL_SCALE } from '../config';
+import { npcCushions } from '../player/cushions';
 import { pushOutOfYard } from './yardObstacles';
 import { Encounter, facePoint, npcEncounterPoints, turnToward } from '../avatar/encounter';
 import { store } from '../store';
 
-const HALL_N = 14;
 const WALK_N = 6;
 const CUSHION_Y = 0.087;
 function useNpcEncounter(id: string) {
@@ -39,22 +38,6 @@ function useNpcEncounter(id: string) {
     group.rotation.y = turnToward(group.rotation.y, stage === 'turn' ? facing + Math.PI : facing, dt * 7);
     return { action: stage === 'bow' ? 'greet' as const : 'idle' as const, motion: 'idle' as const };
   };
-}
-
-/** 殿内座位：从坐垫阵列里均匀挑 14 个，避开通往塑像的中轴走道 */
-function seatList() {
-  const all: { x: number; z: number }[] = [];
-  for (const z of CUSHION_ROWS) {
-    for (const x of CUSHION_COLS) {
-      if (Math.abs(x) < 1.15) continue;
-      const wz = 8 + (z - 8) * HALL_SCALE;
-      // 香案与塑像台之前就是禁区，也不许站到殿门外
-      if (wz < 2.2 || wz > 18.5) continue;
-      all.push({ x: x * HALL_SCALE, z: wz });
-    }
-  }
-  const step = all.length / HALL_N;
-  return Array.from({ length: HALL_N }, (_, i) => all[Math.floor(i * step)]);
 }
 
 /* ---------- 殿内：行礼 + 起身走动 ---------- */
@@ -236,10 +219,9 @@ function Walker({ i }: { i: number }) {
 }
 
 export default function NpcCrowd() {
-  const seats = useMemo(seatList, []);
   return (
     <group>
-      {seats.map((s, i) => (
+      {npcCushions.map((s, i) => (
         <SeatedAvatar key={`s${i}`} x={s.x} z={s.z} i={i} />
       ))}
       {Array.from({ length: WALK_N }, (_, i) => (

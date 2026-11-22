@@ -8,7 +8,7 @@ import { useEffect, useRef, useSyncExternalStore , useState} from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { consumeGyro } from '../immersive';
 import * as THREE from 'three';
-import { BOUNDS, BOUNDS_Z_MIN, BOUNDS_Z_MAX, CAM, MOVE_SPEED, CUSHION_ROWS, CUSHION_COLS, HALL_SCALE } from '../config';
+import { BOUNDS, BOUNDS_Z_MIN, BOUNDS_Z_MAX, CAM, MOVE_SPEED } from '../config';
 import { playerPos } from './pos';
 import { exteriorObstacles, treeObstacles } from '../scene/Exterior';
 import { stick } from './input';
@@ -102,27 +102,6 @@ if (typeof window !== 'undefined') {
     (window as unknown as { __MD_SCALE_K__?: number }).__MD_SCALE_K__ = k;
   };
 }
-const HALL_K = HALL_SCALE;
-const HALL_DZ = 8 * (1 - HALL_SCALE); // 大殿壳体绕殿心 (0,0,8) 缩小后的纵向补偿
-/** 坐垫世界坐标：场景里的垫子在缩放壳体内生成，这里换算成同一套世界坐标 */
-const cushions = CUSHION_ROWS.flatMap((lz) =>
-  CUSHION_COLS.filter((x) => Math.abs(x) >= 1.15).map((x) => ({
-    x: x * HALL_K,
-    z: lz * HALL_K + HALL_DZ,
-  }))
-);
-
-/** 找离自己最近、且没被别人占的铺垫 */
-export function nearestFreeCushion(pos: THREE.Vector3, taken: { x: number; z: number }[]) {
-  let best: { x: number; z: number; d: number } | null = null;
-  for (const c of cushions) {
-    if (taken.some((t) => Math.hypot(t.x - c.x, t.z - c.z) < 0.9)) continue;
-    const d = Math.hypot(c.x - pos.x, c.z - pos.z);
-    if (!best || d < best.d) best = { ...c, d };
-  }
-  return best ?? cushions[0];
-}
-
 /** 把落点从障碍物里推出来（按穿透最浅的一侧滑动） */
 type Box = { x: number; z: number; hx: number; hz: number };
 

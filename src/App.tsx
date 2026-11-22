@@ -10,8 +10,9 @@ import Exterior from './scene/Exterior';
 import Environment from './scene/Environment';
 import SensoryLayer from './scene/SensoryLayer';
 import * as THREE from 'three';
-import LocalPlayer, { type MoveSnapshot, nearestFreeCushion } from './player/LocalPlayer';
+import LocalPlayer, { type MoveSnapshot } from './player/LocalPlayer';
 import { nearestSeat } from './player/seats';
+import { cushionTaken, nearestFreeCushion, overlappingClaim, type Cushion } from './player/cushions';
 import RemotePlayers from './remote/RemotePlayers';
 import Hud from './ui/Hud';
 import ActionBar from './ui/ActionBar';
@@ -152,6 +153,9 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   const machine = machineRef.current;
   const act = useSyncExternalStore(machine.subscribe, machine.getState);
   const moveRef = useRef<MoveSnapshot | null>(null);
+  const selfId = useRef<string>();
+  const cushionClaim = useRef<{ pad: Cushion; active: boolean; retry?: () => void } | null>(null);
+  const cushionFlowId = useRef(0);
   const lastBead = useRef(0);
 
   // 刷新页面不应该退回封面：进过一次就记住，下次直接进场景
@@ -212,8 +216,10 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   /* ---------- 多人连接 ---------- */
   useEffect(() => {
     const net = new Net(room, identity, {
-      onJoined: (_selfId, roomId, capacity, count, peers) =>
-        store.setJoined(roomId, capacity, count, peers),
+      onJoined: (id, roomId, capacity, count, peers) => {
+        selfId.current = id;
+        store.setJoined(roomId, capacity, count, peers);
+      },
       onPeerJoin: p => store.addPeer(p),
       onPeerLeave: id => store.removePeer(id),
       onPeerMove: (id, x, z, rot, anim) => store.movePeer(id, x, z, rot, anim),
@@ -274,7 +280,20 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
   useEffect(() => {
     const t = window.setInterval(() => {
       const s = moveRef.current;
-      if (s) netRef.current?.sendMove(s.x, s.z, s.rot, s.anim);
+      if (!s) return;
+      const claim = cushionClaim.current;
+      const state = machine.state;
+      const occupied = state === 'kowtow' ? 'k' : state === 'bowing' ? 'b' : state === 'sitting' ? 's' : null;
+      if (claim?.active && !occupied) cushionClaim.current = null;
+      if (claim?.active && occupied && selfId.current &&
+        overlappingClaim(claim.pad, store.peers.values(), selfId.current)) {
+        cushionClaim.current = null;
+        machine.interruptByMove();
+        claim.retry?.();
+      }
+      const current = cushionClaim.current;
+      const anim = current ? `p${current.active ? occupied : s.anim === 'walk' ? 'w' : 'i'}:${current.pad.id}` : s.anim;
+      netRef.current?.sendMove(s.x, s.z, s.rot, anim);
     }, MOVE_SEND_INTERVAL);
     return () => window.clearInterval(t);
   }, []);
@@ -476,24 +495,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
           fix?.();
           scale?.(1);
           cam?.(4.6, 0.30, 0);
-          const now = pos?.() ?? P;
-          const cushion = nearestFreeCushion(new THREE.Vector3(now.x, 0, now.z), [...store.peers.values()]);
-          const direction = Math.atan2(now.x - cushion.x, now.z - cushion.z);
-          face?.(direction, 1500);
-          window.setTimeout(() => {
-            walk?.(cushion.x, cushion.z, 0.035);
-            const deadline = performance.now() + 5000 + Math.hypot(now.x - cushion.x, now.z - cushion.z) / MOVE_SPEED * 1500;
-            const waitForCushion = () => {
-              const current = pos?.();
-              if (current && Math.hypot(current.x - cushion.x, current.z - cushion.z) < 0.045) {
-                face?.(0, 1350);
-                window.setTimeout(() => machineRef.current?.kowtow(), 1400);
-              } else if (performance.now() < deadline) {
-                window.setTimeout(waitForCushion, 100);
-              }
-            };
-            window.setTimeout(waitForCushion, 100);
-          }, 1550);
+          seatFlow(() => machineRef.current?.kowtow(), true);
         }, 500 + INCENSE_DURATION_MS + 850);
         return;
       }
@@ -505,33 +507,58 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
     };
     window.setTimeout(arrive, 300);
   };
-  /** 坐下 / 行礼：先在坐垫阵列里找一块没人占的，走过去，站定后再由动作机接管 */
-  const seatFlow = (start: (c: { x: number; z: number }) => void) => {
-    const p = moveRef.current ?? { x: 0, z: 4, rot: 0, anim: 'idle' as const };
-    const c = nearestFreeCushion(new THREE.Vector3(p.x, 0, p.z), []);
-    const walk = (window as unknown as { __MD_WALK__?: (x: number, z: number) => void }).__MD_WALK__;
-    const tp = (window as unknown as { __MD_TP__?: (x: number, z: number) => void }).__MD_TP__;
-    // 离得太远就先走到垫子附近，别让玩家等太久（也避免还没到就坐下）
-    if (Math.hypot(p.x - c.x, p.z - c.z) > 9) tp?.(c.x, c.z + 2.6);
-    walk?.(c.x, c.z);
-    // 等真正走到空垫前（最多 14 秒），到了再坐/拜
-    const t0 = performance.now();
-    const tick = () => {
-      const now = (window as unknown as { __MD_POS__?: () => { x: number; z: number } }).__MD_POS__?.() ?? moveRef.current;
-      const d = now ? Math.hypot(now.x - c.x, now.z - c.z) : 999;
-      // 走到垫子跟前（或最多等 4.5 秒）就精确站到垫面正中，再坐下/俯身
-      if (d < 0.85 || performance.now() - t0 > 4500) {
-        (window as unknown as { __MD_TP__?: (x: number, z: number) => void }).__MD_TP__?.(c.x, c.z);
-        // 面朝主塑像（台座在世界 z≈-2.05），保证行礼方向朝着塑像而不是侧向
-        (window as unknown as { __MD_FACE__?: (r: number) => void }).__MD_FACE__?.(
-          Math.atan2(-c.x, c.z + 2.05),
-        );
-        window.setTimeout(() => start(c), 380);
+  const seatFlow = (start: () => void, slowTurn = false) => {
+    const flow = ++cushionFlowId.current;
+    const excluded = new Set<number>();
+    const api = window as unknown as {
+      __MD_WALK__?: (x: number, z: number, tolerance?: number) => void;
+      __MD_POS__?: () => { x: number; z: number };
+      __MD_FACE__?: (angle: number, duration?: number) => void;
+    };
+    const choose = () => {
+      if (flow !== cushionFlowId.current) return;
+      const current = api.__MD_POS__?.() ?? moveRef.current;
+      const pad = current && nearestFreeCushion(current, [...store.peers.values()], excluded);
+      if (!pad || !current) {
+        cushionClaim.current = null;
+        store.toast('빈 방석이 없습니다');
         return;
       }
-      window.setTimeout(tick, 140);
+      cushionClaim.current = { pad, active: false };
+      const busy = () => cushionTaken(pad, store.peers.values(), selfId.current, true);
+      const retry = () => {
+        excluded.add(pad.id);
+        choose();
+      };
+      const turnTime = slowTurn ? 1500 : 0;
+      if (turnTime) api.__MD_FACE__?.(Math.atan2(current.x - pad.x, current.z - pad.z), turnTime);
+      window.setTimeout(() => {
+        if (flow !== cushionFlowId.current) return;
+        if (busy()) { retry(); return; }
+        api.__MD_WALK__?.(pad.x, pad.z, 0.035);
+        const deadline = performance.now() + 7000 + Math.hypot(current.x - pad.x, current.z - pad.z) / MOVE_SPEED * 2000;
+        const wait = () => {
+          if (flow !== cushionFlowId.current) return;
+          if (busy()) { retry(); return; }
+          const pos = api.__MD_POS__?.();
+          if (pos && Math.hypot(pos.x - pad.x, pos.z - pad.z) < 0.05) {
+            api.__MD_FACE__?.(0, slowTurn ? 1350 : 350);
+            window.setTimeout(() => {
+              if (flow !== cushionFlowId.current) return;
+              if (busy()) { retry(); return; }
+              cushionClaim.current = { pad, active: true, retry };
+              start();
+            }, slowTurn ? 1450 : 450);
+          } else if (performance.now() < deadline) {
+            window.setTimeout(wait, 120);
+          } else {
+            cushionClaim.current = null;
+          }
+        };
+        window.setTimeout(wait, 120);
+      }, turnTime ? turnTime + 50 : 0);
     };
-    window.setTimeout(tick, 180);
+    choose();
   };
 
   const onSit = () => {

@@ -441,7 +441,7 @@ export default function SkinAvatar({
     if (currentAction !== previous.current) {
       avatar.mixer.stopAllAction();
       if (ritual) {
-        const repeat = !live || currentAction === 'bowing';
+        const repeat = (!live && !playback) || currentAction === 'bowing';
         ritual.reset().setLoop(repeat ? THREE.LoopRepeat : THREE.LoopOnce, repeat ? Infinity : 1);
         ritual.clampWhenFinished = !repeat;
         ritual.setDuration(repeat ? ritual.getClip().duration : isIncense ? INCENSE_DURATION_MS / 1000 : KOWTOW_DURATION_MS / 1000).play();
@@ -473,9 +473,9 @@ export default function SkinAvatar({
         if (reach > 0 && withdraw > 0) {
           // Keep the wrists with the incense as the last part of the reach is
           // aligned to the actual burner, then blend back to the baked release.
-          avatar.spine?.rotateX(0.26 * reach * withdraw);
+          avatar.spine?.rotateX(R(23) * reach * withdraw);
           for (const [shoulder, elbow, hand] of avatar.arms) {
-            hand.getWorldPosition(target).addScaledVector(displacement, 0.8);
+            hand.getWorldPosition(target).addScaledVector(displacement, 0.90);
             reachArm(shoulder, elbow, hand, target, reachTools);
           }
         }
@@ -486,7 +486,7 @@ export default function SkinAvatar({
           const bow = THREE.MathUtils.smoothstep(ritual.time, 12.25, 14)
             * (1 - THREE.MathUtils.smoothstep(ritual.time, 14.4, 16.25));
           avatar.spine.rotateX(R(10) * bow);
-          const nod = 0.22 * THREE.MathUtils.smoothstep(progress, 0.15, 0.61) * withdraw + R(8) * bow;
+          const nod = R(21) * THREE.MathUtils.smoothstep(progress, 0.15, 0.61) * withdraw + R(8) * bow;
           // Set the head angle relative to the body root, independent of torso recovery.
           rotation.setFromAxisAngle(nodAxis, nod);
           avatar.head.quaternion.copy(avatar.spine.quaternion).invert().multiply(rotation);

@@ -10,6 +10,7 @@ import type { PeerState } from '../store';
 import SkinAvatar from '../avatar/SkinAvatar';
 import { Encounter, facePoint, npcEncounterPoints, turnToward } from '../avatar/encounter';
 import { store } from '../store';
+import { readCushionSignal } from '../player/cushions';
 import type { Action, Motion } from '../avatar/animState';
 
 const PRAY_MS = 1500;
@@ -47,7 +48,10 @@ export default function RemoteAvatar({ peer }: { peer: PeerState }) {
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     const p = latest.current;
-    target.current.set(p.x, 0, p.z);
+    const claim = readCushionSignal(p.anim);
+    const cushionAction = claim?.state === 'k' ? 'kowtow'
+      : claim?.state === 'b' ? 'bowing' : claim?.state === 's' ? 'sitting' : undefined;
+    target.current.set(p.x, cushionAction ? 0.087 : 0, p.z);
     const group = groupRef.current;
     if (!group) return;
     if (until.current > 0 && performance.now() >= until.current) {
@@ -59,7 +63,7 @@ export default function RemoteAvatar({ peer }: { peer: PeerState }) {
     const people = [...npcEncounterPoints.values(), ...[...store.peers.values()].filter(other => other.id !== p.id)];
     if (self) people.push(self);
     const meet = encounter.current;
-    const stage = meet.update(group.position, people, state.current === 'idle', dt);
+    const stage = meet.update(group.position, people, !cushionAction && state.current === 'idle', dt);
     const pose = playback.current;
     if (meet.target && (stage === 'face' || stage === 'bow' || stage === 'turn')) {
       const facing = facePoint(group.position, meet.target);
@@ -75,8 +79,8 @@ export default function RemoteAvatar({ peer }: { peer: PeerState }) {
     group.rotation.y = turnToward(group.rotation.y, p.rot, dt * 7);
     const distance = gap * step;
     pose.phase += distance * Math.PI / 0.30;
-    pose.action = state.current;
-    pose.motion = distance > 0.001 && (p.anim === 'walk' || gap > 0.12) ? 'walk' : 'idle';
+    pose.action = cushionAction ?? state.current;
+    pose.motion = distance > 0.001 && (p.anim === 'walk' || claim?.state === 'w' || gap > 0.12) ? 'walk' : 'idle';
 
   });
 
