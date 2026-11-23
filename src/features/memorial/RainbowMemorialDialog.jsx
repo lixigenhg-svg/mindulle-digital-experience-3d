@@ -479,6 +479,7 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '' }) {
             <p className="mdl-memorial-kicker">안심당 · 추모</p>
             <h2>무지개다리 추모관</h2>
             <p className="mdl-memorial-sub">한 아이, 한 방. 사진과 편지를 남기고 가족과 나누는 곳.</p>
+            <a href="/?memorial=lulu" className="mt-2 inline-block text-sm text-amber-100 underline underline-offset-4">루루의 공개 추모관 보기</a>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button type="button" onClick={() => guide.current?.showModal()}
