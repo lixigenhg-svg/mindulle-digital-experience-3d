@@ -80,7 +80,7 @@ function EmptyHint() {
 }
 
 function RoomCamera({ single, controls }) {
-  const { camera, size, invalidate } = useThree();
+  const { camera, gl, size, invalidate } = useThree();
   useEffect(() => {
     const angle = THREE.MathUtils.degToRad(camera.fov / 2);
     const aspect = Math.max(0.3, size.width / Math.max(1, size.height));
@@ -91,7 +91,10 @@ function RoomCamera({ single, controls }) {
     controls.current.saveState();
     invalidate();
   }, [camera, size.width, size.height, single, invalidate, controls]);
-  return null;
+  return <OrbitControls ref={controls} domElement={gl.domElement}
+    enablePan={false} enableZoom={false} enableDamping={false}
+    minAzimuthAngle={-Math.PI / 3} maxAzimuthAngle={Math.PI / 3}
+    minPolarAngle={Math.PI / 4} maxPolarAngle={Math.PI / 2.08} />;
 }
 
 function Letter({ name, message }) {
@@ -139,6 +142,18 @@ export function RainbowMemorialScene({ room }) {
   const photoIndex = allPhotos.findIndex(photo => photo.id === photoId);
   const activePhoto = allPhotos[photoIndex];
 
+  function turnCamera(direction) {
+    const orbit = controls.current;
+    if (!orbit) return;
+    const offset = orbit.object.position.clone().sub(orbit.target);
+    const angle = THREE.MathUtils.clamp(orbit.getAzimuthalAngle() + direction * Math.PI / 9,
+      orbit.minAzimuthAngle, orbit.maxAzimuthAngle);
+    const position = new THREE.Spherical().setFromVector3(offset);
+    position.theta = angle;
+    orbit.object.position.setFromSpherical(position).add(orbit.target);
+    orbit.update();
+  }
+
   function showNeighbor(direction) {
     const next = allPhotos[photoIndex + direction];
     if (next) setPhotoId(next.id);
@@ -161,6 +176,7 @@ export function RainbowMemorialScene({ room }) {
     <div className="mdl-memorial-scene relative">
       <Canvas
         shadows
+        style={{ touchAction: 'none' }}
         dpr={[1, 1.5]}
         frameloop="demand"
         camera={{ position: [0, 2.15, 4.5], fov: 38, near: 0.1, far: 30 }}
@@ -188,14 +204,15 @@ export function RainbowMemorialScene({ room }) {
           </Suspense>
         ))}
 
-        <OrbitControls ref={controls} enablePan={false} enableZoom={false} enableDamping={false}
-          minAzimuthAngle={-Math.PI / 3} maxAzimuthAngle={Math.PI / 3}
-          minPolarAngle={Math.PI / 4} maxPolarAngle={Math.PI / 2.08} />
         <RoomCamera single={photos.length === 1} controls={controls} />
         <Letter name={room.petName} message={room.message} />
       </Canvas>
       <div className="absolute left-3 top-3 flex flex-wrap items-center gap-2 text-xs text-white">
         <span className="pointer-events-none rounded-full bg-slate-900/90 px-3 py-2">드래그해서 둘러보기</span>
+        <button type="button" onClick={() => turnCamera(-1)}
+          className="rounded-full bg-slate-900/90 px-3 py-2">왼쪽 보기</button>
+        <button type="button" onClick={() => turnCamera(1)}
+          className="rounded-full bg-slate-900/90 px-3 py-2">오른쪽 보기</button>
         <button type="button" onClick={() => controls.current?.reset()}
           className="rounded-full bg-slate-900/90 px-3 py-2">정면 보기</button>
       </div>
