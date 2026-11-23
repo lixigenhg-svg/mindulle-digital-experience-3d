@@ -131,7 +131,14 @@ export function RainbowMemorialScene({ room }) {
 
   const [photoId, setPhotoId] = useState(null);
   const viewer = useRef(null);
-  const activePhoto = allPhotos.find(photo => photo.id === photoId);
+  const swipeStart = useRef(null);
+  const photoIndex = allPhotos.findIndex(photo => photo.id === photoId);
+  const activePhoto = allPhotos[photoIndex];
+
+  function showNeighbor(direction) {
+    const next = allPhotos[photoIndex + direction];
+    if (next) setPhotoId(next.id);
+  }
   useEffect(() => {
     const dialog = viewer.current;
     if (activePhoto && dialog && !dialog.open) dialog.showModal();
@@ -197,6 +204,12 @@ export function RainbowMemorialScene({ room }) {
         </div>
       )}
       <dialog ref={viewer} onClose={() => setPhotoId(null)} aria-label="추모 사진 크게 보기"
+        onKeyDown={event => {
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            showNeighbor(event.key === 'ArrowLeft' ? -1 : 1);
+          }
+        }}
         onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close(); }}
         className="m-auto max-h-[94dvh] max-w-[96vw] rounded-xl bg-slate-900 p-3 text-white backdrop:bg-black/85">
         {activePhoto && (
@@ -204,7 +217,30 @@ export function RainbowMemorialScene({ room }) {
             <button type="button" autoFocus onClick={() => viewer.current?.close()}
               className="justify-self-end rounded-full bg-white/15 px-4 py-2 text-sm">닫기</button>
             <img src={activePhoto.url} alt={`${room.petName} 사진`}
-              className="max-h-[78dvh] max-w-full object-contain" />
+              className="max-h-[72dvh] max-w-full object-contain touch-pan-y"
+              draggable={false}
+              onTouchStart={event => {
+                const touch = event.touches[0];
+                swipeStart.current = event.touches.length === 1 ? [touch.clientX, touch.clientY] : null;
+              }}
+              onTouchCancel={() => { swipeStart.current = null; }}
+              onTouchEnd={event => {
+                const start = swipeStart.current;
+                swipeStart.current = null;
+                const touch = event.changedTouches[0];
+                if (!start || !touch) return;
+                const dx = touch.clientX - start[0];
+                if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(touch.clientY - start[1])) showNeighbor(dx < 0 ? 1 : -1);
+              }} />
+            {allPhotos.length > 1 && (
+              <nav aria-label="사진 넘기기" className="flex items-center justify-center gap-3">
+                <button type="button" disabled={photoIndex === 0} onClick={() => showNeighbor(-1)}
+                  className="rounded-full bg-white/15 px-3 py-2 text-sm disabled:opacity-40">‹ 이전</button>
+                <span aria-live="polite" className="text-sm">{photoIndex + 1} / {allPhotos.length}</span>
+                <button type="button" disabled={photoIndex === allPhotos.length - 1} onClick={() => showNeighbor(1)}
+                  className="rounded-full bg-white/15 px-3 py-2 text-sm disabled:opacity-40">다음 ›</button>
+              </nav>
+            )}
           </div>
         )}
       </dialog>

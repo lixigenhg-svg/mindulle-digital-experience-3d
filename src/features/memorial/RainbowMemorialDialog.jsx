@@ -561,6 +561,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
               {creating ? (
                 <section className="mdl-memorial-create">
                   <h3>새 추모관</h3>
+                  <p className="mdl-memorial-fine">휴대전화 번호당 무료 추모관은 한 곳까지 만들 수 있어요.</p>
                   <p>아이의 이름과 남기고 싶은 말을 적고 사진을 선택해 주세요.</p>
                   <label>
                     <span>아이의 이름</span>
