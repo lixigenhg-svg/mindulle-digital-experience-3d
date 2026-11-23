@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['tests/**/*.test.ts'],
-    reporters: ['default', ['json', { outputFile: 'docs/vitest-results.json' }]],
-    outputFile: 'docs/vitest-results.json'
+    reporters: ['default', ['json', { outputFile: 'test-results/vitest-results.json' }]],
+    outputFile: 'test-results/vitest-results.json'
   }
 });
