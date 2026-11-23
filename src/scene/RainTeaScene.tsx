@@ -74,13 +74,20 @@ const WINDOW_FOCUS = new THREE.Vector3(0, 1.85, -5);
 function RoomCamera({ windowView }: { windowView: boolean }) {
   const { camera, size } = useThree();
   const focus = useRef(TABLE_FOCUS.clone());
+  const tablePosition = useRef(TABLE_VIEW.clone());
   useFrame((_, dt) => {
     const blend = 1 - Math.exp(-5 * dt);
-    camera.position.lerp(windowView ? WINDOW_VIEW : TABLE_VIEW, blend);
+    const aspect = size.width / Math.max(1, size.height);
+    const angle = aspect < 1 ? 68 : 53;
+    // Fit both cushions and the front edge of the table in the portrait frustum.
+    const halfWidth = 1.85;
+    const fitDistance = 0.68 + halfWidth / (Math.tan(THREE.MathUtils.degToRad(angle / 2)) * Math.max(aspect, 0.1));
+    tablePosition.current.copy(TABLE_VIEW);
+    if (aspect < 1) tablePosition.current.z = Math.max(TABLE_VIEW.z, fitDistance);
+    camera.position.lerp(windowView ? WINDOW_VIEW : tablePosition.current, blend);
     focus.current.lerp(windowView ? WINDOW_FOCUS : TABLE_FOCUS, blend);
     camera.lookAt(focus.current);
     if (camera instanceof THREE.PerspectiveCamera) {
-      const angle = size.width < size.height ? 68 : 53;
       if (camera.fov !== angle) {
         camera.fov = angle;
         camera.updateProjectionMatrix();
