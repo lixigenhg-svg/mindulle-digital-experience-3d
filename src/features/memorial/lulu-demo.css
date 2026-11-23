@@ -48,3 +48,45 @@
   color: #d3c9bc;
   font-size: .875rem;
 }
+
+.lulu-custom {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  align-items: center;
+  gap: clamp(1.25rem, 4vw, 3rem);
+  margin: 2.75rem 0 0;
+  padding: clamp(1rem, 3vw, 2rem);
+  border: 1px solid #d1af804d;
+  border-radius: 1.25rem;
+  background: #19262e;
+  text-align: left;
+}
+
+.lulu-custom img {
+  width: 100%;
+  height: auto;
+  border-radius: .75rem;
+}
+
+.lulu-custom h2 {
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.lulu-custom p { margin-top: .75rem; line-height: 1.65; }
+.lulu-custom .lulu-sample-note { color: #d3c9bc; font-size: .85rem; }
+
+.lulu-custom a {
+  display: inline-block;
+  margin-top: 1.15rem;
+  padding: .7rem 1rem;
+  border-radius: .6rem;
+  background: #e6c496;
+  color: #1c1b20;
+  font-weight: 650;
+}
+
+@media (max-width: 600px) {
+  .lulu-custom { grid-template-columns: 1fr; }
+}
