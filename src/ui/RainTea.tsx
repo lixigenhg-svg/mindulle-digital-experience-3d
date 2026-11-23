@@ -27,6 +27,7 @@ function rainSound() {
 }
 
 export default function RainTea({ invite, onClose }: { invite?: string; onClose: () => void }) {
+  const [guideOpen, setGuideOpen] = useState(false);
   const [pairing, setPairing] = useState(false);
   const [pairKey, setPairKey] = useState('');
   const [recoveryEnabled, setRecoveryEnabled] = useState(false);
@@ -315,7 +316,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
 
   return createPortal(
     <dialog ref={dialog} aria-labelledby="rain-tea-title"
-      onCancel={event => { event.preventDefault(); onClose(); }}
+      onCancel={event => { event.preventDefault(); if (guideOpen) setGuideOpen(false); else onClose(); }}
       className="fixed inset-0 m-0 h-full max-h-none w-full max-w-none bg-[#101726] text-white">
       <div className="absolute inset-0">
         <Suspense fallback={null}>
@@ -325,8 +326,29 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#101726] via-transparent to-[#101726]/70" />
       <header className="absolute inset-x-0 top-0 flex items-center justify-between px-5 py-5">
         <h2 id="rain-tea-title" className="text-lg font-medium text-amber-100">빗소리 찻자리</h2>
-        <button type="button" onClick={onClose} className="rounded-full bg-black/55 px-4 py-2">돌아가기</button>
+        <div className="flex gap-2">
+          <button type="button" aria-expanded={guideOpen} aria-controls="rain-tea-guide"
+            onClick={() => setGuideOpen(open => !open)} className="rounded-full bg-black/55 px-3 py-2 text-sm">
+            이용 안내
+          </button>
+          <button type="button" onClick={onClose} className="rounded-full bg-black/55 px-3 py-2 text-sm">돌아가기</button>
+        </div>
       </header>
+      <section id="rain-tea-guide" hidden={!guideOpen} aria-label="빗소리 찻자리 이용 안내"
+        className="absolute inset-x-3 top-20 z-10 mx-auto max-h-[calc(100dvh-6rem)] max-w-md overflow-y-auto rounded-2xl border border-white/15 bg-slate-900 p-5 text-sm leading-relaxed shadow-xl">
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h3 className="text-base font-semibold text-amber-100">빗소리 찻자리 이용 안내</h3>
+          <button type="button" onClick={() => setGuideOpen(false)} className="rounded-full bg-white/10 px-3 py-1">안내 닫기</button>
+        </div>
+        <h4 className="font-semibold text-amber-100">내 휴대전화에서 이용하기</h4>
+        <ol className="mb-4 list-decimal space-y-1 pl-5">
+          <li>휴대전화에서 3D 사이트를 열고 찻자리 미리보기의 「구매한 이용권 복구」를 눌러 6자리 코드를 확인하세요.</li>
+          <li>결제한 기기에서 「다른 기기에서 이용하기」를 눌러 코드를 입력하고 「연결 승인」을 누르세요.</li>
+          <li>휴대전화에 「찻자리 입장」이 표시되면 다시 결제하지 않고 들어갈 수 있어요.</li>
+        </ol>
+        <h4 className="font-semibold text-amber-100">친구와 함께 차 마시기</h4>
+        <p>찻자리에 입장한 뒤 「친구 초대」를 누르고 「초대 링크 복사」로 링크를 한 명에게 보내세요. 친구는 링크를 열면 무료로 입장할 수 있어요.</p>
+      </section>
       <div className="absolute inset-x-0 bottom-0 space-y-3 p-6 text-center">
         {!entered && <p>{snowy ? '처마 밖으로 내리는 눈을 바라보며 따뜻한 차 한 잔을 마셔 보세요.' : '처마 밖으로 내리는 비를 바라보며 따뜻한 차 한 잔을 마셔 보세요.'}</p>}
         {error && <p role="status">{error}</p>}
@@ -337,6 +359,7 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
         {recoveryEnabled && recoveryOpen && (
           <div className="mx-auto max-w-md space-y-2 rounded-xl bg-slate-900/95 p-3">
             <p>{pairing ? (access?.entitled ? '휴대전화에 표시된 6자리 코드를 입력해 주세요.' : '결제한 기기에서 이 코드를 입력해 주세요. 코드는 5분 동안 유효합니다.') : access?.entitled ? '복구 코드는 5분 동안 한 번만 사용할 수 있습니다.' : '결제한 기기에서 받은 복구 코드를 입력해 주세요.'}</p>
+            <p className="text-xs text-slate-300">내 기기에 이용권을 연결하는 코드입니다.</p>
             <input aria-label="이용권 복구 코드" value={recoveryCode} readOnly={pairing ? !access?.entitled : access?.entitled === true}
               inputMode={pairing ? 'numeric' : 'text'} maxLength={pairing ? 6 : 22}
               autoComplete="off" autoCapitalize="none" spellCheck={false}
@@ -349,9 +372,12 @@ export default function RainTea({ invite, onClose }: { invite?: string; onClose:
           </div>
         )}
         {entered && room && <p aria-live="polite">{guestPresent ? '함께 차를 마시고 있어요' : '친구를 기다리는 중'}</p>}
-        {entered && shareUrl && <input aria-label="친구 초대 링크" value={shareUrl} readOnly
+        {entered && shareUrl && <div className="space-y-1">
+          <p className="text-xs text-slate-300">함께 차를 마실 친구 한 명에게 이 링크를 보내세요.</p>
+          <input aria-label="친구 초대 링크" value={shareUrl} readOnly
           onFocus={event => event.currentTarget.select()}
-          className="w-full max-w-md rounded-lg bg-slate-800 px-3 py-2 text-sm" />}
+          className="w-full max-w-md rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+        </div>}
         <div className="flex flex-wrap justify-center gap-3">
           <button type="button" aria-pressed={snowy} onClick={() => {
             if (!snowy && audio.current) toggleSound();
