@@ -71,7 +71,10 @@ const WINDOW_VIEW = new THREE.Vector3(0.48, 1.45, 0.85);
 const TABLE_FOCUS = new THREE.Vector3(0, 0.9, -0.32);
 const WINDOW_FOCUS = new THREE.Vector3(0, 1.85, -5);
 
-function RoomCamera({ windowView }: { windowView: boolean }) {
+const ORBIT_LIMIT = Math.PI / 9;
+const UP = new THREE.Vector3(0, 1, 0);
+
+function RoomCamera({ windowView, yaw }: { windowView: boolean; yaw: { current: number } }) {
   const { camera, size } = useThree();
   const focus = useRef(TABLE_FOCUS.clone());
   const tablePosition = useRef(TABLE_VIEW.clone());
@@ -84,6 +87,7 @@ function RoomCamera({ windowView }: { windowView: boolean }) {
     const fitDistance = 0.68 + halfWidth / (Math.tan(THREE.MathUtils.degToRad(angle / 2)) * Math.max(aspect, 0.1));
     tablePosition.current.copy(TABLE_VIEW);
     if (aspect < 1) tablePosition.current.z = Math.max(TABLE_VIEW.z, fitDistance);
+    tablePosition.current.sub(TABLE_FOCUS).applyAxisAngle(UP, yaw.current).add(TABLE_FOCUS);
     camera.position.lerp(windowView ? WINDOW_VIEW : tablePosition.current, blend);
     focus.current.lerp(windowView ? WINDOW_FOCUS : TABLE_FOCUS, blend);
     camera.lookAt(focus.current);
@@ -122,8 +126,35 @@ function TeaSteam() {
 export default function RainTeaScene({ purchased, guestPresent, windowView, snowy }: {
   purchased: boolean; guestPresent: boolean; windowView: boolean; snowy: boolean;
 }) {
+  const yaw = useRef(0);
+  const drag = useRef<{ pointerId: number; x: number } | null>(null);
+  const canRotate = purchased && !windowView;
+
   return (
     <Canvas
+      style={canRotate ? { touchAction: 'none', cursor: 'grab' } : undefined}
+      role={canRotate ? 'region' : undefined}
+      aria-label={canRotate ? '찻자리 둘러보기' : undefined}
+      tabIndex={canRotate ? 0 : undefined}
+      onKeyDown={event => {
+        if (!canRotate || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+        event.preventDefault();
+        yaw.current = THREE.MathUtils.clamp(yaw.current + (event.key === 'ArrowLeft' ? -0.1 : 0.1), -ORBIT_LIMIT, ORBIT_LIMIT);
+      }}
+      onPointerDown={event => {
+        if (!canRotate || !event.isPrimary || event.button !== 0) return;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { pointerId: event.pointerId, x: event.clientX };
+      }}
+      onPointerMove={event => {
+        const active = drag.current;
+        if (!canRotate || active?.pointerId !== event.pointerId) return;
+        yaw.current = THREE.MathUtils.clamp(yaw.current - (event.clientX - active.x) * 0.004, -ORBIT_LIMIT, ORBIT_LIMIT);
+        active.x = event.clientX;
+      }}
+      onLostPointerCapture={event => {
+        if (drag.current?.pointerId === event.pointerId) drag.current = null;
+      }}
       dpr={[1, 1.4]}
       camera={{ position: purchased ? TABLE_VIEW.toArray() : [6, 2.75, 8], fov: 52 }}
       onCreated={({ camera }) => camera.lookAt(0, purchased ? 0.68 : 1.4, purchased ? -0.6 : 0)}
@@ -154,7 +185,7 @@ export default function RainTeaScene({ purchased, guestPresent, windowView, snow
       <TeaHouse position={[0, 0, 0]} openView />
       {snowy ? <Snow /> : <Rain />}
       {purchased && <>
-        <RoomCamera windowView={windowView} />
+        <RoomCamera windowView={windowView} yaw={yaw} />
         <TeaSteam />
         <pointLight position={[-1.65, 1.45, -0.75]} color="#f4a752" intensity={6} distance={3.5} />
         <pointLight position={[1.7, 1.45, -0.75]} color="#efb46e" intensity={5} distance={3.5} />
