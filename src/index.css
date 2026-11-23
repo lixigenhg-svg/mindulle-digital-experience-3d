@@ -31,7 +31,9 @@ canvas {
   position: fixed;
   inset: 0;
   z-index: 40;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -42,6 +44,10 @@ canvas {
   font-family: 'Noto Serif KR', 'Nanum Myeongjo', 'Apple SD Gothic Neo', Georgia, serif;
   animation: intro-fade 1.2s ease both;
 }
+
+.intro > header,
+.intro > section,
+.intro > footer { flex-shrink: 0; }
 
 .intro-sky {
   position: absolute;
@@ -637,4 +643,14 @@ html[data-md-night='1'] canvas { filter: brightness(0.62) saturate(0.72); transi
 }
 @media (prefers-reduced-motion: reduce) {
   .woodfish-struck { animation: none; }
+}
+
+@media (max-height: 900px) {
+  .intro-halo {
+    --intro-halo-size: min(37svh, 69vw, 330px);
+    width: var(--intro-halo-size);
+    height: var(--intro-halo-size);
+    --halo-r: calc(var(--intro-halo-size) / 2 - 8px);
+  }
+  .intro-center { margin-top: 0; }
 }

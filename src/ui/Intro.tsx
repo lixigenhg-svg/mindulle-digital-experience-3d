@@ -52,6 +52,11 @@ export default function Intro({ onEnter, onToggleSound, muted }: IntroProps) {
           빛과 소리로 머무는 4D 몰입 공간.
         </p>
 
+        <a href="/?memorial=lulu"
+          className="relative z-10 mt-3 inline-flex rounded-full border border-amber-100/30 bg-black/30 px-4 py-2 text-sm text-amber-100 hover:bg-black/50">
+          루루의 공개 추모관 보기
+        </a>
+
         <div className="intro-actions">
           <button type="button" className="intro-enter" data-testid="enter-button" onClick={onEnter}>
             4D 체험 시작
@@ -80,10 +85,6 @@ export default function Intro({ onEnter, onToggleSound, muted }: IntroProps) {
           </button>
         </div>
 
-        <a href="/?memorial=lulu"
-          className="relative z-10 mt-3 inline-flex rounded-full border border-amber-100/30 bg-black/30 px-4 py-2 text-sm text-amber-100 hover:bg-black/50">
-          루루의 공개 추모관 보기
-        </a>
         <FooterNotice />
       </section>
 
