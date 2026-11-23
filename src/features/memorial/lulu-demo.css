@@ -1,0 +1,50 @@
+.lulu-demo {
+  height: 100%;
+  overflow: auto;
+  touch-action: pan-y;
+  background: radial-gradient(ellipse at 50% 15%, #253747, #111923 65%);
+  color: #f5eee3;
+}
+
+.lulu-demo header {
+  max-width: 72rem;
+  margin: auto;
+  padding: 1.4rem clamp(1rem, 4vw, 3rem);
+  color: #ead6bb;
+  font-weight: 600;
+}
+
+.lulu-demo article {
+  max-width: 64rem;
+  margin: auto;
+  padding: clamp(1.6rem, 4vw, 3rem) clamp(1rem, 4vw, 3rem) 3rem;
+  text-align: center;
+}
+
+.lulu-eyebrow {
+  color: #e2ba8c;
+  font-size: .8rem;
+  letter-spacing: .18em;
+}
+
+.lulu-demo h1 {
+  margin: .55rem 0;
+  font: 600 clamp(2.35rem, 6vw, 4.25rem)/1.15 'Noto Serif KR', Georgia, serif;
+}
+
+.lulu-intro {
+  margin: .8rem 0 1.6rem;
+  color: #d3c9bc;
+}
+
+.lulu-demo .mdl-memorial-scene {
+  height: clamp(300px, 57dvh, 610px);
+  border-color: #d1af804d;
+  box-shadow: 0 22px 65px #080c1299;
+}
+
+.lulu-guide {
+  margin: 1rem 0 0;
+  color: #d3c9bc;
+  font-size: .875rem;
+}
