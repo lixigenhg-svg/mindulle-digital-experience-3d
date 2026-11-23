@@ -1,8 +1,8 @@
-import React, { Suspense, useEffect, useMemo } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
-function PhotoFrame({ photo, x }) {
+function PhotoFrame({ photo, x, scale, onOpen }) {
   const texture = useLoader(THREE.TextureLoader, photo.url);
 
   useEffect(() => {
@@ -12,7 +12,10 @@ function PhotoFrame({ photo, x }) {
   }, [texture]);
 
   return (
-    <group position={[x, 1.24, 0]}>
+    <group position={[x, 0.75 + 0.49 * scale, 0]} scale={scale}
+      onClick={event => { event.stopPropagation(); onOpen(photo.id); }}
+      onPointerOver={event => { event.nativeEvent.target.style.cursor = 'zoom-in'; }}
+      onPointerOut={event => { event.nativeEvent.target.style.cursor = ''; }}>
       {/* 木框 */}
       <mesh castShadow>
         <boxGeometry args={[0.94, 1.24, 0.07]} />
@@ -75,15 +78,16 @@ function EmptyHint() {
   );
 }
 
-function RoomCamera() {
-  const { camera, size } = useThree();
+function RoomCamera({ single }) {
+  const { camera, size, invalidate } = useThree();
   useEffect(() => {
     const angle = THREE.MathUtils.degToRad(camera.fov / 2);
     const aspect = Math.max(0.3, size.width / Math.max(1, size.height));
-    const distance = Math.max(4.5, 2.9 / (Math.tan(angle) * aspect));
+    const distance = Math.max(single ? 3.8 : 4.5, (single ? 0.95 : 2.9) / (Math.tan(angle) * aspect));
     camera.position.set(0, 1.2 + distance * 0.29, distance);
-    camera.lookAt(0, 1.05, 0);
-  }, [camera, size.width, size.height]);
+    camera.lookAt(0, single ? 1.38 : 1.05, 0);
+    invalidate();
+  }, [camera, size.width, size.height, single, invalidate]);
   return null;
 }
 
@@ -121,6 +125,15 @@ function Letter({ name, message }) {
 export function RainbowMemorialScene({ room }) {
   const photos = useMemo(() => (room?.photos || []).slice(0, 5), [room?.photos]);
 
+  const [photoId, setPhotoId] = useState(null);
+  const viewer = useRef(null);
+  const activePhoto = photos.find(photo => photo.id === photoId);
+  useEffect(() => {
+    const dialog = viewer.current;
+    if (activePhoto && dialog && !dialog.open) dialog.showModal();
+    if (!activePhoto && dialog?.open) dialog.close();
+  }, [activePhoto]);
+
   const positions = useMemo(() => {
     if (photos.length <= 1) return [0];
     if (photos.length === 2) return [-0.95, 0.95];
@@ -130,7 +143,7 @@ export function RainbowMemorialScene({ room }) {
   }, [photos.length]);
 
   return (
-    <div className="mdl-memorial-scene">
+    <div className="mdl-memorial-scene relative">
       <Canvas
         shadows
         dpr={[1, 1.5]}
@@ -156,13 +169,35 @@ export function RainbowMemorialScene({ room }) {
 
         {photos.map((photo, index) => (
           <Suspense key={photo.id} fallback={null}>
-            <PhotoFrame photo={photo} x={positions[index] || 0} />
+            <PhotoFrame photo={photo} x={positions[index] || 0} scale={photos.length === 1 ? 1.4 : 1} onOpen={setPhotoId} />
           </Suspense>
         ))}
 
-        <RoomCamera />
+        <RoomCamera single={photos.length === 1} />
         <Letter name={room.petName} message={room.message} />
       </Canvas>
+      {photos.length > 0 && (
+        <div className="absolute bottom-3 right-3 flex flex-wrap justify-end gap-2">
+          {photos.map((photo, index) => (
+            <button key={photo.id} type="button" onClick={() => setPhotoId(photo.id)}
+              className="rounded-full bg-slate-900/90 px-3 py-2 text-xs text-white">
+              {photos.length === 1 ? '사진 크게 보기' : `사진 ${index + 1} 크게 보기`}
+            </button>
+          ))}
+        </div>
+      )}
+      <dialog ref={viewer} onClose={() => setPhotoId(null)} aria-label="추모 사진 크게 보기"
+        onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close(); }}
+        className="m-auto max-h-[94dvh] max-w-[96vw] rounded-xl bg-slate-900 p-3 text-white backdrop:bg-black/85">
+        {activePhoto && (
+          <div className="grid justify-items-center gap-2">
+            <button type="button" autoFocus onClick={() => viewer.current?.close()}
+              className="justify-self-end rounded-full bg-white/15 px-4 py-2 text-sm">닫기</button>
+            <img src={activePhoto.url} alt={`${room.petName} 사진`}
+              className="max-h-[78dvh] max-w-full object-contain" />
+          </div>
+        )}
+      </dialog>
     </div>
   );
 }
