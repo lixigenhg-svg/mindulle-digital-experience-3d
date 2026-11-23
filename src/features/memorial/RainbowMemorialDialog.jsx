@@ -132,6 +132,7 @@ function useRoomPhotos(room) {
 }
 
 export function RainbowMemorialDialog({ open, onClose }) {
+  const guide = useRef(null);
   const [config, setConfig] = useState(null);
   const [phase, setPhase] = useState('login'); // login | rooms
   const [phone, setPhone] = useState('');
@@ -471,10 +472,41 @@ export function RainbowMemorialDialog({ open, onClose }) {
             <h2>무지개다리 추모관</h2>
             <p className="mdl-memorial-sub">한 아이, 한 방. 사진과 편지를 남기고 가족과 나누는 곳.</p>
           </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button type="button" onClick={() => guide.current?.showModal()}
+              className="whitespace-nowrap rounded-full bg-white/10 px-3 py-2 text-sm">이용 안내</button>
           <button type="button" className="mdl-memorial-close" onClick={onClose} aria-label="닫기">
             ×
           </button>
+          </div>
         </header>
+        <dialog ref={guide} aria-labelledby="memorial-guide-title"
+          className="m-auto max-h-[85dvh] w-[92vw] max-w-lg overflow-y-auto rounded-2xl bg-slate-900 p-5 text-sm leading-relaxed text-white backdrop:bg-black/75">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 id="memorial-guide-title" className="text-base font-semibold text-amber-100">추모관 이용 안내</h3>
+            <button type="button" autoFocus onClick={() => guide.current?.close()}
+              className="shrink-0 rounded-full bg-white/10 px-3 py-2">안내 닫기</button>
+          </div>
+          <dl className="space-y-4">
+            <div>
+              <dt className="font-semibold text-amber-100">무료 추모관 만들기</dt>
+              <dd>휴대전화 번호당 무료 추모관은 한 곳, 사진은 5장까지 보관할 수 있어요. 무료 추모관은 로그인한 본인만 볼 수 있어요.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-amber-100">사진 추가하고 크게 보기</dt>
+              <dd>기존 추모관을 선택하고 아래로 내려 「사진 추가」를 누르세요. 액자를 누르면 사진을 크게 볼 수 있고, 「이전」「다음」 버튼이나 좌우로 밀어서 다른 사진을 볼 수 있어요.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-amber-100">업그레이드와 가족 공유</dt>
+              <dd>여섯 번째 사진을 추가하면 업그레이드 안내가 열려요. 결제 후 사진을 최대 20장까지 보관하고 가족에게 공유 링크를 보낼 수 있어요. 이용료는 연 {won(config?.priceWon || 9900)}이며 매년 자동 결제돼요.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-amber-100">추모관 삭제하기</dt>
+              <dd>삭제할 추모관을 선택한 뒤 맨 아래의 「추모관 삭제」를 누르세요. 방 이름을 확인한 뒤 삭제를 승인하세요. 사진과 글도 함께 삭제되며 복구할 수 없어요.</dd>
+            </div>
+          </dl>
+        </dialog>
+
 
         {phase === 'login' ? (
           <section className="mdl-memorial-login">
