@@ -100,10 +100,10 @@ export const petApi = {
     return request('/api/pet/rooms');
   },
 
-  createRoom({ petName, message }) {
+  createRoom({ petName, message, paid = false }) {
     return request('/api/pet/rooms', {
       method: 'POST',
-      body: { petName, message },
+      body: { petName, message, paid },
     });
   },
 

@@ -13,6 +13,7 @@ import './memorial.css';
 const MAX_PHOTOS = 5;
 
 const STATUS = {
+  awaiting_payment: { label: '결제 대기', tone: 'muted' },
   preview: { label: '미리보기', tone: 'preview' },
   active: { label: '이용 중', tone: 'active' },
   canceled: { label: '해지 예정', tone: 'canceled' },
@@ -283,7 +284,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
       setError(new Error('아이의 이름과 남기고 싶은 말을 적어 주세요.'));
       return;
     }
-    if (!newPhotos.length) {
+    if (creating !== 'paid' && !newPhotos.length) {
       setError(new Error('사진을 한 장 이상 선택해 주세요.'));
       return;
     }
@@ -292,14 +293,15 @@ export function RainbowMemorialDialog({ open, onClose }) {
     let createdRoom;
     try {
       const images = [];
-      for (const file of newPhotos) images.push(await fileToJpegDataUrl(file));
+      for (const file of creating === 'paid' ? [] : newPhotos) images.push(await fileToJpegDataUrl(file));
       const data = await petApi.createRoom({
         petName: memorialName(newPetName),
         message: newMessage.trim(),
+        paid: creating === 'paid',
       });
       createdRoom = data.room;
       for (const image of images) await petApi.addPhoto(createdRoom.id, image);
-      setNotice('사진을 올리고 미리보기 추모관을 만들었습니다.');
+      setNotice(creating === 'paid' ? '결제 후 사진을 올리고 가족과 함께 볼 수 있어요.' : '사진을 올리고 미리보기 추모관을 만들었습니다.');
     } catch (err) {
       if (createdRoom) {
         setError(new Error('추모관은 만들어졌지만 일부 사진을 올리지 못했습니다. 사진 목록에서 다시 올려 주세요.'));
@@ -376,7 +378,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
 
   const startCheckout = async () => {
     if (!selected) return;
-    if (selected.photos.length < 1) {
+    if (selected.status !== 'awaiting_payment' && selected.photos.length < 1) {
       setError(new Error('사진을 한 장 이상 올려 주세요.'));
       return;
     }
@@ -458,7 +460,9 @@ export function RainbowMemorialDialog({ open, onClose }) {
   const canSeeScene = Boolean(selected && (selected.ownerAccess || selected.familyAccess) && loadedPhotos.length > 0);
   const canEdit = Boolean(selected && selected.ownerAccess && selected.status !== 'expired');
   const checkoutEnabled = config?.available && config?.photoUpgradeEnabled === true;
-  const showPay = Boolean(checkoutEnabled && selected && ['preview', 'past_due', 'payment_failed', 'expired'].includes(selected.status));
+  const awaitingPayment = selected?.status === 'awaiting_payment';
+  const pendingRoom = rooms.find(room => room.status === 'awaiting_payment');
+  const showPay = Boolean(config?.additionalRoomsEnabled && awaitingPayment) || Boolean(checkoutEnabled && selected && ['preview', 'past_due', 'payment_failed', 'expired'].includes(selected.status));
   const showShare = Boolean(selected && selected.shareEnabled && selected.shareUrl);
 
   if (!open) return null;
@@ -500,6 +504,10 @@ export function RainbowMemorialDialog({ open, onClose }) {
               <dt className="font-semibold text-amber-100">업그레이드와 가족 공유</dt>
               <dd>여섯 번째 사진을 추가하면 업그레이드 안내가 열려요. 결제 후 사진을 최대 20장까지 보관하고 가족에게 공유 링크를 보낼 수 있어요. 이용료는 연 {won(config?.priceWon || 9900)}이며 매년 자동 결제돼요.</dd>
             </div>
+            {config?.additionalRoomsEnabled && <div>
+              <dt className="font-semibold text-amber-100">다른 아이의 추모관 만들기</dt>
+              <dd>다른 아이의 이름으로 새 추모관을 열 수 있어요. 한 곳당 연 {won(config?.priceWon || 9900)}이며 결제 후 사진 최대 20장과 가족 공유를 이용할 수 있어요.</dd>
+            </div>}
             <div>
               <dt className="font-semibold text-amber-100">추모관 삭제하기</dt>
               <dd>삭제할 추모관을 선택한 뒤 맨 아래의 「추모관 삭제」를 누르세요. 방 이름을 확인한 뒤 삭제를 승인하세요. 사진과 글도 함께 삭제되며 복구할 수 없어요.</dd>
@@ -582,8 +590,14 @@ export function RainbowMemorialDialog({ open, onClose }) {
               </div>
 
               <button type="button" className="mdl-memorial-new" disabled={busy} onClick={() => { setCreating(true); newNameInput.current?.focus(); }}>
-                + 새 추모관 만들기
+                + 무료 추모관 만들기
               </button>
+              {config?.additionalRoomsEnabled && (
+                <button type="button" className="mdl-memorial-new" disabled={busy}
+                  onClick={() => pendingRoom ? openRoom(pendingRoom) : setCreating('paid')}>
+                  {pendingRoom ? '결제 대기 중인 추모관 열기' : '+ 다른 아이의 추모관 만들기'}
+                </button>
+              )}
               <p className="mdl-memorial-fine">
                 한 마리당 한 방 · 연 {won(config?.priceWon || 9900)} · 사진 최대 {config?.maxPhotos || MAX_PHOTOS}장
               </p>
@@ -592,9 +606,10 @@ export function RainbowMemorialDialog({ open, onClose }) {
             <main className="mdl-memorial-main">
               {creating ? (
                 <section className="mdl-memorial-create">
-                  <h3>새 추모관</h3>
-                  <p className="mdl-memorial-fine">휴대전화 번호당 무료 추모관은 한 곳까지 만들 수 있어요.</p>
-                  <p>아이의 이름과 남기고 싶은 말을 적고 사진을 선택해 주세요.</p>
+                  <h3>{creating === 'paid' ? '다른 아이의 추모관 만들기' : '무료 추모관 만들기'}</h3>
+                  {creating === 'paid'
+                    ? <p>연 {won(config?.priceWon || 9900)} · 결제 후 사진 최대 20장과 가족 공유를 이용할 수 있어요.</p>
+                    : <p>휴대전화 번호당 무료 추모관은 한 곳까지 만들 수 있어요. 아이의 이름과 남기고 싶은 말을 적고 사진을 선택해 주세요.</p>}
                   <label>
                     <span>아이의 이름</span>
                     <input
@@ -615,7 +630,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
                       onChange={(event) => setNewMessage(event.target.value)}
                     />
                   </label>
-                  <div className="mdl-memorial-actions">
+                  {creating !== 'paid' && <div className="mdl-memorial-actions">
                     <button type="button" disabled={busy} onClick={() => newPhotoInput.current?.click()}>
                       사진 선택 (1~5장)
                     </button>
@@ -627,10 +642,10 @@ export function RainbowMemorialDialog({ open, onClose }) {
                       if (invalid) event.currentTarget.value = '';
                     }} />
                     <span aria-live="polite">{newPhotos.length ? `${newPhotos.length}장 선택됨` : '선택한 사진 없음'}</span>
-                  </div>
+                  </div>}
                   <div className="mdl-memorial-actions">
                     <button type="button" className="mdl-memorial-primary" onClick={createRoom} disabled={busy}>
-                      {busy ? '추모관을 만들고 있습니다…' : '무료 미리보기 만들기'}
+                      {busy ? '추모관을 만들고 있습니다…' : creating === 'paid' ? '추모관 만들고 결제 안내 보기' : '무료 미리보기 만들기'}
                     </button>
                     <button type="button" onClick={() => setCreating(false)} disabled={busy}>
                       취소
@@ -692,7 +707,7 @@ export function RainbowMemorialDialog({ open, onClose }) {
                     <RainbowMemorialScene room={{ ...selected, petName: memorialName(selected.petName), photos: loadedPhotos }} />
                   ) : (
                     <div className="mdl-memorial-scene-empty">
-                      {selected.photos.length === 0
+                      {awaitingPayment ? '결제를 마치면 사진을 올릴 수 있어요.' : selected.photos.length === 0
                         ? <div className="mdl-memorial-actions" style={{ flexDirection: 'column', alignItems: 'center' }}>
                             <span>사진을 올리면 이곳에 액자가 나타납니다.</span>
                             {canEdit && (
@@ -780,11 +795,11 @@ export function RainbowMemorialDialog({ open, onClose }) {
                           이번 결제 {won(config?.priceWon || selected.priceWon || 9900)} · 다음 결제일은 결제 후 1년 뒤입니다.
                         </small>
                       </div>
-                      <button type="button" className="mdl-memorial-primary" onClick={startCheckout} disabled={busy || selected.photos.length < 1}>
-                        {selected.status === 'preview' ? '결제하고 가족과 나누기' : '다시 결제하기'}
+                      <button type="button" className="mdl-memorial-primary" onClick={startCheckout} disabled={busy || (!awaitingPayment && selected.photos.length < 1)}>
+                        {awaitingPayment ? '결제하고 이 추모관 열기' : selected.status === 'preview' ? '이 추모관 업그레이드' : '다시 결제하기'}
                       </button>
                       <p className="mdl-memorial-fine">
-                        결제 전에 무료 미리보기로 확인할 수 있습니다. 결제 후 가족 공유 링크가 열립니다.
+                        {awaitingPayment ? '이 추모관에만 적용되며, 결제 후 사진 최대 20장과 가족 공유를 이용할 수 있어요.' : '결제 후 이 추모관의 사진 보관 한도가 20장으로 늘어나고 가족 공유 링크가 열립니다.'}
                       </p>
                     </div>
                   ) : null}
