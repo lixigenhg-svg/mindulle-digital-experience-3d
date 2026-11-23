@@ -150,6 +150,13 @@ export function RainbowMemorialDialog({ open, onClose }) {
   useEffect(() => { if (creating) newNameInput.current?.focus(); }, [creating]);
   const [notice, setNotice] = useState('');
   const fileInputRef = useRef(null);
+  const [upgradeRoom, setUpgradeRoom] = useState(null);
+  const upgradeDialog = useRef(null);
+  useEffect(() => {
+    if (upgradeRoom && upgradeRoom === selected?.id && upgradeDialog.current && !upgradeDialog.current.open) {
+      upgradeDialog.current.showModal();
+    }
+  }, [upgradeRoom, selected?.id]);
   const newPhotoInput = useRef(null);
 
   const isLoggedIn = Boolean(getOwnerToken());
@@ -324,8 +331,11 @@ export function RainbowMemorialDialog({ open, onClose }) {
     if (!selected) return;
     const files = Array.from(fileList || []).filter((file) => file.type.startsWith('image/'));
     if (!files.length) return;
-    if (selected.photos.length + files.length > MAX_PHOTOS) {
-      setError(new Error(`사진은 최대 ${MAX_PHOTOS}장까지 올릴 수 있습니다.`));
+    const limit = selected.maxPhotos || MAX_PHOTOS;
+    if (selected.photos.length + files.length > limit) {
+      if (selected.status === 'preview') setUpgradeRoom(selected.id);
+      else setError(new Error(`사진은 최대 ${limit}장까지 올릴 수 있습니다. 사진을 지운 뒤 다시 시도해 주세요.`));
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
     setBusy(true);
@@ -446,7 +456,8 @@ export function RainbowMemorialDialog({ open, onClose }) {
   const statusInfo = selected ? STATUS[selected.status] || STATUS.preview : null;
   const canSeeScene = Boolean(selected && (selected.ownerAccess || selected.familyAccess) && loadedPhotos.length > 0);
   const canEdit = Boolean(selected && selected.ownerAccess && selected.status !== 'expired');
-  const showPay = Boolean(import.meta.env.VITE_MEMORIAL_CHECKOUT_ENABLED === 'true' && config?.available && selected && ['preview', 'past_due', 'payment_failed', 'expired'].includes(selected.status));
+  const checkoutEnabled = config?.available && config?.photoUpgradeEnabled === true;
+  const showPay = Boolean(checkoutEnabled && selected && ['preview', 'past_due', 'payment_failed', 'expired'].includes(selected.status));
   const showShare = Boolean(selected && selected.shareEnabled && selected.shareUrl);
 
   if (!open) return null;
@@ -669,11 +680,29 @@ export function RainbowMemorialDialog({ open, onClose }) {
                   </div>
 
                   <div className="mdl-memorial-photos">
+                    {upgradeRoom === selected.id && (
+                      <dialog ref={upgradeDialog} onClose={() => setUpgradeRoom(null)} aria-label="사진 보관 한도 안내"
+                        className="m-auto w-[92vw] max-w-md space-y-3 rounded-xl bg-slate-900 p-5 text-white backdrop:bg-black/70">
+                        <strong>무료 미리보기는 사진 5장까지</strong>
+                        <p>연 {won(config?.priceWon || 9900)}에 사진을 최대 20장까지 보관하고 가족과 공유할 수 있어요. 매년 자동 결제되며 언제든 자동 갱신을 해지할 수 있어요.</p>
+                        {!checkoutEnabled && <p role="status">지금은 결제를 준비 중입니다. 기존 사진은 그대로 보관됩니다.</p>}
+                        <ErrorText error={error} />
+                        <div className="mdl-memorial-actions">
+                          <button type="button" onClick={() => upgradeDialog.current?.close()}>닫기</button>
+                          {checkoutEnabled && <button type="button" disabled={busy} onClick={startCheckout}>업그레이드 결제</button>}
+                        </div>
+                      </dialog>
+                    )}
                     <div className="mdl-memorial-photos-head">
-                      <strong>사진 {selected.photos.length} / {config?.maxPhotos || MAX_PHOTOS}</strong>
-                      {canEdit && selected.photos.length < (config?.maxPhotos || MAX_PHOTOS) ? (
+                      <strong>사진 {selected.photos.length} / {selected.maxPhotos || MAX_PHOTOS}</strong>
+                      {canEdit ? (
                         <>
-                          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={busy}>
+                          <button type="button" onClick={() => {
+                            const limit = selected.maxPhotos || MAX_PHOTOS;
+                            if (selected.photos.length < limit) fileInputRef.current?.click();
+                            else if (selected.status === 'preview') setUpgradeRoom(selected.id);
+                            else setError(new Error(`사진은 최대 ${limit}장까지 올릴 수 있습니다. 기존 사진을 먼저 지워 주세요.`));
+                          }} disabled={busy}>
                             사진 추가
                           </button>
                           <input

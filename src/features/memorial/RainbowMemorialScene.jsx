@@ -123,11 +123,15 @@ function Letter({ name, message }) {
 }
 
 export function RainbowMemorialScene({ room }) {
-  const photos = useMemo(() => (room?.photos || []).slice(0, 5), [room?.photos]);
+  const allPhotos = room?.photos || [];
+  const [page, setPage] = useState(0);
+  const lastPage = Math.max(0, Math.ceil(allPhotos.length / 5) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const photos = useMemo(() => allPhotos.slice(currentPage * 5, currentPage * 5 + 5), [allPhotos, currentPage]);
 
   const [photoId, setPhotoId] = useState(null);
   const viewer = useRef(null);
-  const activePhoto = photos.find(photo => photo.id === photoId);
+  const activePhoto = allPhotos.find(photo => photo.id === photoId);
   useEffect(() => {
     const dialog = viewer.current;
     if (activePhoto && dialog && !dialog.open) dialog.showModal();
@@ -178,10 +182,16 @@ export function RainbowMemorialScene({ room }) {
       </Canvas>
       {photos.length > 0 && (
         <div className="absolute bottom-3 right-3 flex flex-wrap justify-end gap-2">
+          {lastPage > 0 && <>
+            <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}
+              className="rounded-full bg-slate-900/90 px-3 py-2 text-xs text-white disabled:opacity-50">이전 사진</button>
+            <button type="button" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}
+              className="rounded-full bg-slate-900/90 px-3 py-2 text-xs text-white disabled:opacity-50">다음 사진</button>
+          </>}
           {photos.map((photo, index) => (
             <button key={photo.id} type="button" onClick={() => setPhotoId(photo.id)}
               className="rounded-full bg-slate-900/90 px-3 py-2 text-xs text-white">
-              {photos.length === 1 ? '사진 크게 보기' : `사진 ${index + 1} 크게 보기`}
+              {photos.length === 1 ? '사진 크게 보기' : `사진 ${currentPage * 5 + index + 1} 크게 보기`}
             </button>
           ))}
         </div>

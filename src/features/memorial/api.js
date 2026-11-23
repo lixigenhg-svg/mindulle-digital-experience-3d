@@ -44,7 +44,7 @@ async function request(path, { method = 'GET', body, token = getOwnerToken() } =
   const response = await fetch(`${PET_API_BASE}${path}`, {
     method,
     headers,
-    credentials: 'omit',
+    credentials: path.endsWith('/checkout') ? 'include' : 'omit',
     cache: 'no-store',
     body: body === undefined ? undefined : JSON.stringify(body),
   });
