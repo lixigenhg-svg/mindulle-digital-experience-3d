@@ -132,7 +132,8 @@ function useRoomPhotos(room) {
   return loaded?.key === photoKey ? loaded.photos : [];
 }
 
-export function RainbowMemorialDialog({ open, onClose }) {
+export function RainbowMemorialDialog({ open, onClose, initialRoomId = '' }) {
+  const returnRoomId = useRef(initialRoomId);
   const guide = useRef(null);
   const [config, setConfig] = useState(null);
   const [phase, setPhase] = useState('login'); // login | rooms
@@ -168,7 +169,10 @@ export function RainbowMemorialDialog({ open, onClose }) {
       const data = await petApi.listRooms();
       const nextRooms = data?.rooms || [];
       setRooms(nextRooms);
+      const returnedRoom = returnRoomId.current && nextRooms.find(room => room.publicId === returnRoomId.current);
+      if (returnedRoom) returnRoomId.current = '';
       setSelected((current) => {
+        if (returnedRoom) return returnedRoom;
         if (!current) return current;
         return nextRooms.find((room) => room.id === current.id) || current;
       });

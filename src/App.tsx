@@ -41,6 +41,16 @@ import { haptic } from './immersive';
 import { expireNightPass, expirePremium, refreshPremium } from './paid';
 import { forgetPrivateEntry, getPrivateEntry, isPrivateRoom, rememberPrivateEntry } from './privateRoom';
 
+const paidMemorialRoom = (() => {
+  if (typeof window === 'undefined') return '';
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('pet') !== 'paid') return '';
+  const room = url.searchParams.get('room') || '';
+  for (const key of ['pet', 'room', 'token']) url.searchParams.delete(key);
+  window.history.replaceState(window.history.state, '', url);
+  return room;
+})();
+
 const RainbowMemorialDialog = lazy(() => import('./features/memorial/RainbowMemorialDialog.jsx'));
 
 const IS_MOBILE =
@@ -181,7 +191,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
     /^#rain-tea=([A-Za-z0-9_-]{22,128})$/.exec(location.hash)?.[1]);
   const [rainTeaOpen, setRainTeaOpen] = useState(() => !isPrivate && Boolean(rainTeaInvite));
   const [inTeaHouse, setInTeaHouse] = useState(false);
-  const [memorialOpen, setMemorialOpen] = useState(false);
+  const [memorialOpen, setMemorialOpen] = useState(Boolean(paidMemorialRoom));
   useEffect(() => {
     if (!isPrivate && consumeRainTeaReturn()) setRainTeaOpen(true);
   }, [isPrivate]);
@@ -748,7 +758,7 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
       )}
 
       {rainTeaOpen && <RainTea invite={rainTeaInvite} onClose={closeRainTea} />}
-      {memorialOpen && <Suspense fallback={null}><RainbowMemorialDialog open onClose={() => setMemorialOpen(false)} /></Suspense>}
+      {memorialOpen && <Suspense fallback={null}><RainbowMemorialDialog open initialRoomId={paidMemorialRoom} onClose={() => setMemorialOpen(false)} /></Suspense>}
       <DonationModal />
       <ServerModal />
       <SettingsModal engine={audioRef.current} />
