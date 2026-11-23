@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useLoader, useThree } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
 function PhotoFrame({ photo, x, scale, onOpen }) {
@@ -13,7 +14,7 @@ function PhotoFrame({ photo, x, scale, onOpen }) {
 
   return (
     <group position={[x, 0.75 + 0.49 * scale, 0]} scale={scale}
-      onClick={event => { event.stopPropagation(); onOpen(photo.id); }}
+      onClick={event => { event.stopPropagation(); if (event.delta < 5) onOpen(photo.id); }}
       onPointerOver={event => { event.nativeEvent.target.style.cursor = 'zoom-in'; }}
       onPointerOut={event => { event.nativeEvent.target.style.cursor = ''; }}>
       {/* 木框 */}
@@ -78,16 +79,18 @@ function EmptyHint() {
   );
 }
 
-function RoomCamera({ single }) {
+function RoomCamera({ single, controls }) {
   const { camera, size, invalidate } = useThree();
   useEffect(() => {
     const angle = THREE.MathUtils.degToRad(camera.fov / 2);
     const aspect = Math.max(0.3, size.width / Math.max(1, size.height));
     const distance = Math.max(single ? 3.8 : 4.5, (single ? 0.95 : 2.9) / (Math.tan(angle) * aspect));
     camera.position.set(0, 1.2 + distance * 0.29, distance);
-    camera.lookAt(0, single ? 1.38 : 1.05, 0);
+    controls.current.target.set(0, single ? 1.38 : 1.05, 0);
+    controls.current.update();
+    controls.current.saveState();
     invalidate();
-  }, [camera, size.width, size.height, single, invalidate]);
+  }, [camera, size.width, size.height, single, invalidate, controls]);
   return null;
 }
 
@@ -131,6 +134,7 @@ export function RainbowMemorialScene({ room }) {
 
   const [photoId, setPhotoId] = useState(null);
   const viewer = useRef(null);
+  const controls = useRef(null);
   const swipeStart = useRef(null);
   const photoIndex = allPhotos.findIndex(photo => photo.id === photoId);
   const activePhoto = allPhotos[photoIndex];
@@ -184,9 +188,17 @@ export function RainbowMemorialScene({ room }) {
           </Suspense>
         ))}
 
-        <RoomCamera single={photos.length === 1} />
+        <OrbitControls ref={controls} enablePan={false} enableZoom={false} enableDamping={false}
+          minAzimuthAngle={-Math.PI / 3} maxAzimuthAngle={Math.PI / 3}
+          minPolarAngle={Math.PI / 4} maxPolarAngle={Math.PI / 2.08} />
+        <RoomCamera single={photos.length === 1} controls={controls} />
         <Letter name={room.petName} message={room.message} />
       </Canvas>
+      <div className="absolute left-3 top-3 flex flex-wrap items-center gap-2 text-xs text-white">
+        <span className="pointer-events-none rounded-full bg-slate-900/90 px-3 py-2">드래그해서 둘러보기</span>
+        <button type="button" onClick={() => controls.current?.reset()}
+          className="rounded-full bg-slate-900/90 px-3 py-2">정면 보기</button>
+      </div>
       {photos.length > 0 && (
         <div className="absolute bottom-3 right-3 flex flex-wrap justify-end gap-2">
           {lastPage > 0 && <>
