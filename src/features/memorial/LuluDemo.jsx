@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { lazy, Suspense, useRef, useState } from 'react';
 import { RainbowMemorialScene } from './RainbowMemorialScene';
 import './memorial.css';
 import './lulu-demo.css';
+
+const RainbowMemorialDialog = lazy(() => import('./RainbowMemorialDialog.jsx'));
 
 const photos = [
   { id: 'lulu-01', url: '/assets/lulu/01.webp' },
@@ -12,6 +14,9 @@ const photos = [
 ];
 
 export default function LuluDemo() {
+  const [creating, setCreating] = useState(false);
+  const createButton = useRef(null);
+
   return (
     <main className="lulu-demo" lang="ko">
       <header>
@@ -21,6 +26,12 @@ export default function LuluDemo() {
         <p className="lulu-eyebrow">무지개다리 3D 추모관</p>
         <h1>루루의 추모관</h1>
         <p className="lulu-intro">함께한 순간을 오래 기억하는 곳</p>
+        <div className="lulu-create">
+          <button ref={createButton} type="button" onClick={() => setCreating(true)}>
+            내 반려동물 추모관 만들기
+          </button>
+          <p>휴대전화 인증 후 사진 5장까지 담아 무료로 만들 수 있어요.</p>
+        </div>
         <RainbowMemorialScene room={{ petName: '루루', message: '함께한 순간을 오래 기억하는 곳', photos }} />
         <details open className="lulu-guide mx-auto mt-5 max-w-xl rounded-xl border border-white/15 bg-black/20 p-4 text-left">
           <summary className="cursor-pointer font-semibold text-amber-100">이용 안내</summary>
@@ -31,6 +42,14 @@ export default function LuluDemo() {
           </ol>
         </details>
       </article>
+      {creating && (
+        <Suspense fallback={<p className="lulu-create-loading" role="status">추모관을 여는 중이에요…</p>}>
+          <RainbowMemorialDialog open initialCreate onClose={() => {
+            setCreating(false);
+            createButton.current?.focus();
+          }} />
+        </Suspense>
+      )}
     </main>
   );
 }

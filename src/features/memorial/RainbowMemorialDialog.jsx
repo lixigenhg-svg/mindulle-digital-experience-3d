@@ -132,7 +132,7 @@ function useRoomPhotos(room) {
   return loaded?.key === photoKey ? loaded.photos : [];
 }
 
-export function RainbowMemorialDialog({ open, onClose, initialRoomId = '' }) {
+export function RainbowMemorialDialog({ open, onClose, initialRoomId = '', initialCreate = false }) {
   const returnRoomId = useRef(initialRoomId);
   const guide = useRef(null);
   const [config, setConfig] = useState(null);
@@ -145,12 +145,12 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '' }) {
   const [rooms, setRooms] = useState([]);
   const [selected, setSelected] = useState(null);
   const loadedPhotos = useRoomPhotos(selected);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(initialCreate);
   const [newPetName, setNewPetName] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [newPhotos, setNewPhotos] = useState([]);
   const newNameInput = useRef(null);
-  useEffect(() => { if (creating) newNameInput.current?.focus(); }, [creating]);
+  useEffect(() => { if (creating && phase === 'rooms') newNameInput.current?.focus(); }, [creating, phase]);
   const [notice, setNotice] = useState('');
   const fileInputRef = useRef(null);
   const [upgradeRoom, setUpgradeRoom] = useState(null);
@@ -275,7 +275,7 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '' }) {
       setNotice('');
       setPhase('rooms');
       const nextRooms = await refreshRooms();
-      setCreating(nextRooms.length === 0);
+      setCreating(initialCreate || nextRooms.length === 0);
     } catch (err) {
       setError(err);
     } finally {
