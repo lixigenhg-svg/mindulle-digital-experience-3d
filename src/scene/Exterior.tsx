@@ -698,7 +698,7 @@ export type BoxObstacle = { x: number; z: number; hx: number; hz: number };
 
 export const exteriorObstacles: BoxObstacle[] = [
   ...lampSpots.map((p) => ({ x: p.x, z: p.z, hx: 0.30, hz: 0.30 })),
-  ...benchSpots.map((p) => ({ x: p.x, z: p.z, hx: 0.30, hz: 0.95, bench: true })),
+  ...benchSpots.map((p) => ({ x: p.x, z: p.z, hx: 0.35, hz: 0.85, bench: true })),
   { x: -11.2, z: 38.5, hx: 2.30, hz: 2.30 },  // 莲池（左）
   { x: 10.4, z: 48.4, hx: 2.20, hz: 2.20 },    // 莲池（右）
   { x: -5.4, z: 40.5, hx: 0.22, hz: 0.22 },    // 幢幡柱

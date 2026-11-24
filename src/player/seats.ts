@@ -45,5 +45,8 @@ export function isInTeaHouse(x: number, z: number) {
   const dz = z - 36.6;
   const c = Math.cos(0.35);
   const s = Math.sin(0.35);
-  return Math.abs(dx * c + dz * s) <= 2.85 && Math.abs(-dx * s + dz * c) <= 2.35;
+  const localX = dx * c + dz * s;
+  const localZ = -dx * s + dz * c;
+  // Keep the shortcuts available on the approach to the open front of the pavilion.
+  return Math.abs(localX) <= 3.2 && localZ >= -2.35 && localZ <= 3.5;
 }

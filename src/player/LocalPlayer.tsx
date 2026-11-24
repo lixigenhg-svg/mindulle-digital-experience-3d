@@ -174,6 +174,7 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
   const [seatKindState, setSeatKindState] = useState<'floor' | 'tea' | 'bench'>('floor');
   const seatKindRef = useRef<'floor' | 'tea' | 'bench'>('floor');
   const activeBench = useRef<Seat | null>(null);
+  const checkedSpawn = useRef(false);
   const activeTeaSeat = useRef<Seat | null>(null);
   const floorRef = useRef<THREE.Mesh>(null);
 
@@ -424,7 +425,20 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
       s.pitch = THREE.MathUtils.clamp(s.pitch + gyro.pitch, CAM.pitchMin, CAM.pitchMax);
     }
     const sitting = machine.state === 'sitting';
-    if (!sitting) activeTeaSeat.current = null;
+    if (!sitting) {
+      activeTeaSeat.current = null;
+      const bench = activeBench.current;
+      activeBench.current = null;
+      (window as unknown as { __MD_SEATED_BENCH__?: boolean }).__MD_SEATED_BENCH__ = false;
+      if (bench) {
+        const facing = bench.rot ?? s.facing;
+        const clearance = 0.35 + PLAYER_R + 0.12;
+        s.pos.set(bench.x - Math.sin(facing) * clearance, 0, bench.z - Math.cos(facing) * clearance);
+        s.facing = facing;
+      }
+      if (bench || !checkedSpawn.current) clampRoom(s.pos);
+      checkedSpawn.current = true;
+    }
     const nearbySeat = sitting && !activeTeaSeat.current && !activeBench.current
       ? nearestSeat(s.pos.x, s.pos.z) : null;
     if (nearbySeat) {
@@ -667,15 +681,6 @@ export default function LocalPlayer({ name, color, machine, onMove, privateMode 
         targetY = CUSHION_Y;
       }
     } else {
-      const bench = activeBench.current;
-      if (bench) {
-        activeBench.current = null;
-        const facing = bench.rot ?? s.facing;
-        const clearance = 0.76;
-        s.pos.x = bench.x - Math.sin(facing) * clearance;
-        s.pos.z = bench.z - Math.cos(facing) * clearance;
-        clampRoom(s.pos);
-      }
       playerMotion.seatKind = 'floor';
       if (seatKindRef.current !== 'floor') { seatKindRef.current = 'floor'; setSeatKindState('floor'); }
     }

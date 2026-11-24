@@ -697,27 +697,27 @@ function ExperienceApp({ privateKey = '', onPrivateDenied }: {
         <>
           <Hud onToggleSound={onToggleSound} onToggleListen={onToggleListen} onExit={exitExperience} onScreenshot={onScreenshot} />
           <p className="scene-hint">화면을 눌러 이동 · 드래그로 시점 회전</p>
-          {!insideHall && seatNear && (
-            <button
-              type="button"
-              data-testid="seat-button"
-              onClick={onSit}
-              className="pointer-events-auto absolute bottom-[110px] left-1/2 z-20 -translate-x-1/2 rounded-full bg-black/55 px-6 py-3 text-[15px] text-amber-100 shadow-lg backdrop-blur-md transition hover:bg-black/70"
-            >
-              {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '앉기'}
-            </button>
-          )}
-          {!isPrivate && inTeaHouse && !rainTeaOpen && !memorialOpen && (
-            <button type="button" onClick={() => setMemorialOpen(true)}
-              className="absolute bottom-[86px] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-900/85 px-5 py-2 text-sm text-amber-100">
-              무지개다리 추모관
-            </button>
-          )}
-          {!isPrivate && inTeaHouse && !rainTeaOpen && (
-            <button type="button" onClick={() => setRainTeaOpen(true)}
-              className="absolute bottom-12 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-slate-900/85 px-5 py-2.5 text-sm text-amber-100 shadow-lg">
-              빗소리 찻자리 미리보기
-            </button>
+          {!insideHall && (seatNear || inTeaHouse) && !rainTeaOpen && !memorialOpen && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-20 flex flex-col items-center gap-2 px-3 sm:bottom-12">
+              {seatNear && (
+                <button type="button" data-testid="seat-button" onClick={onSit}
+                  className="pointer-events-auto rounded-full bg-black/70 px-6 py-3 text-[15px] text-amber-100 shadow-lg backdrop-blur-md hover:bg-black/80">
+                  {act === 'sitting' ? '일어서기' : seatNear === 'tea' ? '앉아서 차 마시기' : '앉기'}
+                </button>
+              )}
+              {inTeaHouse && (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <button type="button" onClick={() => setRainTeaOpen(true)}
+                    className="pointer-events-auto rounded-full bg-slate-900/85 px-4 py-3 text-sm text-amber-100 shadow-lg">
+                    빗소리 찻자리 미리보기
+                  </button>
+                  <button type="button" onClick={() => setMemorialOpen(true)}
+                    className="pointer-events-auto rounded-full bg-slate-900/85 px-4 py-3 text-sm text-amber-100 shadow-lg">
+                    무지개다리 추모관
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           {!isPrivate && insideHall && <ActionBar
             machine={machine}
