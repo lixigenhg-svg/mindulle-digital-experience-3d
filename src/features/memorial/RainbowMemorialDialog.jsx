@@ -419,15 +419,16 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '', initi
   };
 
   const deleteRoom = async () => {
-    if (!selected) return;
-    if (!window.confirm('추모관을 삭제하면 사진과 글이 모두 삭제됩니다. 정말 삭제할까요?')) return;
+    if (!selected || !rooms.some(room => room.id === selected.id)) return;
+    const name = memorialName(selected.petName);
+    if (!window.confirm(`「${name}」을 삭제할까요? 사진과 글도 함께 삭제되며 복구할 수 없습니다.`)) return;
     setBusy(true);
     setError(null);
     try {
       await petApi.deleteRoom(selected.id);
       setSelected(null);
       await refreshRooms();
-      setNotice('추모관을 삭제했습니다.');
+      setNotice(`「${name}」을 삭제했습니다.`);
     } catch (err) {
       setError(err);
     } finally {
@@ -464,6 +465,7 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '', initi
   const canSeeScene = Boolean(selected && (selected.ownerAccess || selected.familyAccess) && loadedPhotos.length > 0);
   const canEdit = Boolean(selected && selected.ownerAccess && selected.status !== 'expired');
   const checkoutEnabled = config?.available && config?.photoUpgradeEnabled === true;
+  const canDelete = Boolean(selected && rooms.some(room => room.id === selected.id));
   const awaitingPayment = selected?.status === 'awaiting_payment';
   const pendingRoom = rooms.find(room => room.status === 'awaiting_payment');
   const showPay = Boolean(config?.additionalRoomsEnabled && awaitingPayment) || Boolean(checkoutEnabled && selected && ['preview', 'past_due', 'payment_failed', 'expired'].includes(selected.status));
@@ -515,7 +517,7 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '', initi
             </div>}
             <div>
               <dt className="font-semibold text-amber-100">추모관 삭제하기</dt>
-              <dd>삭제할 추모관을 선택한 뒤 맨 아래의 「추모관 삭제」를 누르세요. 방 이름을 확인한 뒤 삭제를 승인하세요. 사진과 글도 함께 삭제되며 복구할 수 없어요.</dd>
+              <dd>삭제할 추모관을 선택한 뒤 이름 아래의 「추모관 삭제」를 누르세요. 방 이름을 확인한 뒤 삭제를 승인하세요. 사진과 글도 함께 삭제되며 복구할 수 없어요.</dd>
             </div>
           </dl>
         </dialog>
@@ -609,6 +611,7 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '', initi
             </aside>
 
             <main className="mdl-memorial-main">
+              {!selected && notice && <p className="mdl-memorial-notice" role="status">{notice}</p>}
               {creating ? (
                 <section className="mdl-memorial-create">
                   <h3>{creating === 'paid' ? '다른 아이의 추모관 만들기' : '무료 추모관 만들기'}</h3>
@@ -677,6 +680,15 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '', initi
                       {statusInfo?.label || selected.status}
                     </span>
                   </div>
+
+                  <div className="mdl-memorial-danger-row">
+                    {canDelete ? (
+                      <button type="button" className="mdl-memorial-danger" onClick={deleteRoom} disabled={busy}>
+                        추모관 삭제
+                      </button>
+                    ) : null}
+                  </div>
+
 
                   {selected.status === 'preview' ? (
                     <div className="mdl-memorial-banner is-preview">
@@ -833,13 +845,6 @@ export function RainbowMemorialDialog({ open, onClose, initialRoomId = '', initi
                     </div>
                   ) : null}
 
-                  <div className="mdl-memorial-danger-row">
-                    {canEdit ? (
-                      <button type="button" className="mdl-memorial-danger" onClick={deleteRoom} disabled={busy}>
-                        추모관 삭제
-                      </button>
-                    ) : null}
-                  </div>
 
                   <ErrorText error={error} />
                   {notice ? <p className="mdl-memorial-notice">{notice}</p> : null}
