@@ -93,6 +93,7 @@ export default function Intro({ onEnter, onToggleSound, muted }: IntroProps) {
         <span>예 갖추기</span>
         <span>108 구슬</span>
         <span>나무북</span>
+        <a href="./guide.html">체험관 이용 안내</a>
         <p>잠시 머무는 4D 몰입 공간 · MINDULLE</p>
       </footer>
     </main>
